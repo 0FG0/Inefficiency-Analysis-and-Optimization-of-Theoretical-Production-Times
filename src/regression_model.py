@@ -30,7 +30,7 @@ for i in range(len(corr_matrix.columns)):
 
 print("Features fortemente correlate (>0.7):")
 for feat1, feat2, corr in sorted(high_corr, key=lambda x: x[2], reverse=True):
-    print(f"{feat1} ↔ {feat2}: {corr:.3f}")
+    print(f"{feat1} <-> {feat2}: {corr:.3f}")
 
 
 # Prevision inefficiency
@@ -59,7 +59,8 @@ numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
 preprocessor_linear = ColumnTransformer(
     transformers=[
         ("num", StandardScaler(), numeric_cols),
-        ("cat", OneHotEncoder(drop="first", handle_unknown="ignore"), categorical_cols)
+        ("cat", OneHotEncoder(drop="if_binary", handle_unknown="ignore"), categorical_cols)
+        
     ]
 )
 
@@ -67,7 +68,7 @@ preprocessor_linear = ColumnTransformer(
 preprocessor_tree = ColumnTransformer(
     transformers=[
         ("num", "passthrough", numeric_cols),
-        ("cat", OneHotEncoder(drop="first", handle_unknown="ignore"), categorical_cols)
+        ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_cols)
     ]
 )
 
@@ -216,9 +217,19 @@ print("\nCONFRONTO FINALE MODELLI:")
 print(results_df)
 
 # ****** APPUNTI ******
+
 # R² -> quanto il modello si avvicina al valore reale,
 # R² = 1 valore perfetto, 0 media, < 0 peggio della media 
 # MSE -> errore medio al quadrato, di quanti $ si discosta dal valore reale
+
+# nel preprocessing negli alberi non ho messo il drop="if_binary" in quanto 
+# Per gli alberi è meglio non droppare mai la prima colonna. 
+# Gli alberi traggono vantaggio dalla ridondanza perché possono scegliere di fare
+# uno "split" su qualsiasi categoria in modo più diretto.
+# per gli alberi non si usa lo StandardScaler() in quanto gli alberi di decisione 
+# sono invarianti alla scala. Non gli importa se un numero è 0.001 o 1.000.000,
+# perché lavorano per "soglie" (es. Età > 30?). 
+# Usando passthrough si risparmiano calcoli inutili.
 
 # quando si runna il codice compare 
 # UserWarning: Found unknown categories in columns [0] during transform. These unknown categories will be encoded as all zeros
@@ -227,7 +238,6 @@ print(results_df)
 # con handle_unknown="ignore" le categorie sconosciute vengono trasformate tutte in zeri
 # questo avviene perchè nella fase di training ovviamente non ci sono tutte le possibili variazioni
 # dei dati dunque nel test appare una variazione che il modello non ha mai visto
-# in questo caso si tratta della colonna 0 dunque WO
 
 # I risultati mostrano una netta differenza tra modelli lineari e modelli basati su alberi decisionali,
 # questi ultimi infatti superano significativamente i modelli lineari.
@@ -237,6 +247,7 @@ print(results_df)
 # Linear Regression → R² ≈ 0.33
 # Ridge → R² ≈ 0.32
 # Lasso → R² ≈ 0
+
 # Questi modelli spiegano solo circa il 30% della variabilità dell’indice di inefficienza.
 # Questo indica che la relazione tra variabili operative e inefficienza non è lineare, 
 # sono presenti interazioni complesse tra le feature che i modelli lineari non sono in grado di cogliere. 
@@ -244,15 +255,18 @@ print(results_df)
 # (come evidenziato dall’analisi delle correlazioni). in particolare Lasso collassa praticamente a zero, 
 # segno che la penalizzazione elimina quasi tutta l’informazione utile 
 # in presenza di forte correlazione tra variabili.
-# 
+ 
 # Modelli ad Albero:
-# Decision Tree → R² ≈ 0.73
-# Random Forest → R² ≈ 0.85
-# XGBoost → R² ≈ 0.87
+# Decision Tree → R² ≈ 0.70
+# Random Forest → R² ≈ 0.840
+# Random Forest Ottimizzata → R² ≈ 0.843
+# XGBoost → R² ≈ 0.868
+# XGBoost Ottimizzata → R² ≈ 0.858  
+
 # Questi modelli spiegano circa l’85–87% della variabilità. 
 # Questo suggerisce che il sistema produttivo presenta dinamiche non lineari e che 
 # l’inefficienza dipende da combinazioni di variabili e non da effetti indipendenti.
-# 
+
 # XGBoost è il modello che ha ottenuto il miglior risultato con:
 # R² ≈ 0.868
 # Dopo l'ottimizzazione si note che random forest è migliorata leggermente mentre XGBoost è peggiorato 
