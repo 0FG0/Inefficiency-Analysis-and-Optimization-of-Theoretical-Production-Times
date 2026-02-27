@@ -13,7 +13,7 @@ from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
-from feature_engineering import feature_engineering_pipeline
+from feature_engineering import pipeline_inefficienza
 from sklearn.metrics import make_scorer, recall_score, f1_score, accuracy_score
 
 
@@ -30,7 +30,7 @@ df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
 freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
 df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
 
-df = feature_engineering_pipeline(df)
+df = pipeline_inefficienza(df)
 
 # class definition (target)
 p60 = df['Indice_Inefficienza'].quantile(0.60)
@@ -331,12 +331,12 @@ print("Matrice salvata in ../outputs/confusion_matrix_rf_anomaly.png")
 # ATTENZIONE → 19.6%
 # ANOMALIA → 14.7%
 # 
-# Il migliore è chiaramente:
+# Il migliore è:
 # 
-# XGBoost Ottimizzata
+# XGBoost
 # Accuracy: 0.756
-# F1-macro: 0.60
-# ROC-AUC: 0.9037
+# F1-macro: 0.616
+# ROC-AUC: 0.8921
 # È coerente che batta Random Forest: con dataset piccoli e non lineari, XGBoost tende a essere più stabile.
 # 
 # Logistic buono con (0.68 accuracy)

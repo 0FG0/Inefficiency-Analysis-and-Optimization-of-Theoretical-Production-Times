@@ -13,7 +13,7 @@ from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
-from feature_engineering import feature_engineering_pipeline
+from feature_engineering import pipeline_inefficienza
 
 # load datas
 df = pd.read_csv("../data/processed/koepfer_160_2.csv")
@@ -28,7 +28,7 @@ df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
 freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
 df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
 
-df = feature_engineering_pipeline(df)
+df = pipeline_inefficienza(df)
 
 # class definition (target)
 media = df['Indice_Inefficienza'].mean()

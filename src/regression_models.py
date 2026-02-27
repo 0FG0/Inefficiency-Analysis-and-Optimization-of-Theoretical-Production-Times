@@ -10,7 +10,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import KFold
-from feature_engineering import feature_engineering_pipeline
+from feature_engineering import pipeline_inefficienza
 
 # loading the clean datas of KOEPFER 160/2 machine
 df = pd.read_csv("../data/processed/koepfer_160_2.csv")
@@ -43,7 +43,7 @@ freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
 df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
 
 # applying feature engineering
-df = feature_engineering_pipeline(df)
+df = pipeline_inefficienza(df)
 
 cols_to_drop = [
     "Indice_Inefficienza",          
@@ -148,18 +148,34 @@ base_models = {
     ])
 }
 
+def valuta_modello_regressione(name, y_true, y_pred):
+    print(f"\n{'='*50}")
+    print(f"  {name}")
+    print(f"{'='*50}")
+    
+    r2 = r2_score(y_true, y_pred)
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = np.sqrt(mse)
+    
+    print(f"R²   : {r2:.4f}")
+    print(f"MSE  : {mse:.4f}")
+    print(f"RMSE : {rmse:.4f}")
+
+    return {
+        "Model": name,
+        "R2": r2,
+        "MSE": mse,
+        "RMSE": rmse,
+    }
+
 # training and comparison of base models
 results = []
 print("\nBASE MODELS:")
 for name, model in base_models.items():
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
-    r2 = r2_score(y_test, y_pred)
-    mse = mean_squared_error(y_test, y_pred)
-    results.append({"Model": name, "R2": r2, "MSE": mse})
-    print(f"\n{name}")
-    print(f"  R²:  {r2:.4f}")
-    print(f"  MSE: {mse:.4f}")
+    result = valuta_modello_regressione(name, y_test, y_pred)
+    results.append(result)
 
 
 # random forest grid search
@@ -190,15 +206,15 @@ print("Miglior parametri RF:", rf_grid.best_params_)
 
 best_rf = rf_grid.best_estimator_
 y_pred_rf = best_rf.predict(X_test)
-r2_rf = r2_score(y_test, y_pred_rf)
-mse_rf = mean_squared_error(y_test, y_pred_rf)
-
-print(f"\nRandom Forest Ottimizzata  ->  R²: {r2_rf:.4f}  |  MSE: {mse_rf:.4f}")
-results.append({"Model": "Random Forest Ottimizzata", "R2": r2_rf, "MSE": mse_rf})
+result_rf = valuta_modello_regressione(
+    "Random Forest Ottimizzata",
+    y_test,
+    y_pred_rf
+)
+results.append(result_rf)
 
 # xgboost grid search
 print("\nXGBOOST GRID SEARCH")
-
 xgb_pipeline = Pipeline([
     ("preprocessor", preprocessor_tree),
     ("model", XGBRegressor(
@@ -229,11 +245,12 @@ print("Migliori parametri XGB:", xgb_grid.best_params_)
 
 best_xgb = xgb_grid.best_estimator_
 y_pred_xgb = best_xgb.predict(X_test)
-r2_xgb = r2_score(y_test, y_pred_xgb)
-mse_xgb = mean_squared_error(y_test, y_pred_xgb)
-
-print(f"\nXGBoost Ottimizzata  ->  R²: {r2_xgb:.4f}  |  MSE: {mse_xgb:.4f}")
-results.append({"Model": "XGBoost Ottimizzata", "R2": r2_xgb, "MSE": mse_xgb})
+result_xgb = valuta_modello_regressione(
+    "XGBoost Ottimizzata",
+    y_test,
+    y_pred_xgb
+)
+results.append(result_xgb)
 
 # final comparison
 results_df = pd.DataFrame(results).sort_values("R2", ascending=False)
@@ -241,9 +258,16 @@ print("\nCONFRONTO FINALE MODELLI:")
 print(results_df.to_string(index=False))
 
 # ****** APPUNTI ******
-# R² -> quanto il modello si avvicina al valore reale,
+# R² (Coefficiente di Determinazione) -> quanto il modello si avvicina al valore reale,
+# MSE (Mean Squared Error) -> errore medio al quadrato, di quanto si discosta dal valore reale
+# RMSE (Root Mean Squared Error) -> errore medio, di quanto si discosta dal valore reale
+
+# esempio di R²:
 # R² = 1 valore perfetto, 0 media, < 0 peggio della media 
-# MSE -> errore medio al quadrato, di quanto si discosta dal valore reale
+# esempio di MSE: 
+# Se il valore reale della variabile che voglio predire è 1.2 e il modello prevede 1.5 -> errore = 0.3 -> MSE = 0.03
+# esempio di RMSE: 
+# Se il valore reale della variabile che voglio predire è 1.2 e il modello prevede 1.5 -> RMSE = 0.3 
 
 # nel preprocessing negli alberi non ho messo il drop="if_binary" in quanto 
 # Per gli alberi è meglio non droppare mai la prima colonna. 
@@ -275,8 +299,7 @@ print(results_df.to_string(index=False))
 # Questo indica che la relazione tra variabili operative e inefficienza non è lineare, 
 # sono presenti interazioni complesse tra le feature che i modelli lineari non sono in grado di cogliere. 
 # Inoltre come ovviamente ci si aspettava dai dati, esiste multicollinearità (come evidenziato dall’analisi
-# delle correlazioni). segno che la penalizzazione elimina quasi tutta l’informazione utile 
-# in presenza di forte correlazione tra variabili.
+# delle correlazioni). segno che i modelli lineari non sono in grado di studiare il peso delle variabili fortemente correlate.
  
 # Modelli ad Albero:
 # Decision Tree → R² ≈ 0.23
@@ -297,3 +320,10 @@ print(results_df.to_string(index=False))
 # il fatto che xgboost spieghi circa il 78% dell'inefficienza significa che l’Indice di Inefficienza 
 # non è casuale ma è fortemente legato alle variabili operative e che quindi è possibile costruire un 
 # sistema predittivo affidabile.
+
+# A differenza dell'MSE, che eleva al quadrato gli errori rendendone difficile l’interpretazione pratica, 
+# l’RMSE fornisce una misura direttamente interpretabile: indica di quanto, in media, il modello si discosta 
+# dal valore reale dell’indice. Nel caso del modello XGBoost, l’RMSE ≈ 0.121 implica che l’errore medio di 
+# previsione è pari a circa 0.12 punti di inefficienza. Considerando che l’Indice di Inefficienza ha media ≈ 1.18 
+# e deviazione standard ≈ 0.28, un errore medio di 0.12 rappresenta una deviazione contenuta rispetto alla 
+# variabilità naturale del processo. Questo conferma la buona capacità predittiva del modello.
