@@ -9,14 +9,62 @@ from xgboost import XGBRegressor
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import KFold
+from feature_engineering import feature_engineering_pipeline
 
 # loading the clean datas of KOEPFER 160/2 machine
 df = pd.read_csv("../data/processed/koepfer_160_2.csv")
 
+# ****** APPUNTI ******
+# siccome nei dati ci sono gli articoli che hanno quasi tutti un numero diverso
+# e questo nell'addestramento con onehotencoding andrebbe a creare centinaia di colonne
+# ma allo stesso tempo non posso droppare l'intera colonna degli articoli in quanto
+# potrebbe comunque essere che alcune anomalie di produzione si verifichino solo quando ci 
+# sono determinati articoli per cui è comunque una colonna da cui il modello potrebbe imparare
+# allora droppo la colonna degli articoli e ne creo un'altra che abbia solo gli articoli che 
+# vengono ripetuti all'interno dei dati per più di 3 volte calcolandone poi la frequenza
+# in modo tale che sia studiabile dal modello
+# altre colonne che droppo oltre alla colonna che voglio predire sono
+# le colonne tempo lavoro e tempo teorico in quanto sono le colonne che formano 
+# la colonna di inefficienze che voglio predire, wo perchè non è utile in alcun modo 
+# all'addestramento, ID DAD per lo stesso motivo, Descrizione Macchina in quanto stiamo 
+# studiando sempre la stessa macchina, C.d.L. Effett, Data_Ora_Fine che viene
+# già estratta come feature temporali
+
+counts = df['ARTICOLO'].value_counts()
+
+threshold = 3 
+df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
+    df['ARTICOLO'].isin(counts[counts >= threshold].index), 
+    other='ALTRO'
+)
+
+freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
+df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
+
+# applying feature engineering
+df = feature_engineering_pipeline(df)
+
+cols_to_drop = [
+    "Indice_Inefficienza",          
+    "Tempo Lavoraz. ORE",           
+    "Tempo_Teorico_TOT_ORE",        
+    "WO",                           
+    "ARTICOLO",                     
+    "Descrizione Articolo",
+    'ARTICOLO_grouped'         
+    "ID DAD",                       
+    "Descrizione Macchina",         
+    "C.d.L. Effett",                
+    "Data_Ora_Fine",                
+]
+
+y = df["Indice_Inefficienza"]
+X = df.drop(columns=cols_to_drop, errors="ignore")
 
 # find couples with high correlation
 print("ANALISI CORRELAZIONI TRA FEATURES:")
-corr_matrix = df.select_dtypes(include=[np.number]).corr().abs()
+corr_matrix = X.select_dtypes(include=[np.number]).corr().abs()
 
 high_corr = []
 for i in range(len(corr_matrix.columns)):
@@ -28,31 +76,30 @@ for i in range(len(corr_matrix.columns)):
                 corr_matrix.iloc[i, j]
             ))
 
-print("Features fortemente correlate (>0.7):")
-for feat1, feat2, corr in sorted(high_corr, key=lambda x: x[2], reverse=True):
-    print(f"{feat1} <-> {feat2}: {corr:.3f}")
-
-
-# Prevision inefficiency
-y = df["Indice_Inefficienza"]
-X = df.drop(columns=["Indice_Inefficienza"])
-
+print("Features fortemente correlate (> 0.7):")
+if high_corr:
+    for feat1, feat2, corr in sorted(high_corr, key=lambda x: x[2], reverse=True):
+        print(f"  {feat1} <-> {feat2}: {corr:.3f}")
+else:
+    print("  Nessuna coppia con correlazione > 0.7")
 
 # train test split
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
 
-
 # columns identification
 categorical_cols = [
-    "FASE",
-    "Cod CIC",
-    "C.d.L. Prev",
-    "Descrizione Centro di Lavoro previsto"
+    col for col in [
+        "FASE",
+        "Cod CIC",
+        "C.d.L. Prev",
+        "Descrizione Centro di Lavoro previsto"
+    ]
+    if col in X.columns
 ]
-numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
 
+numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
 
 # preprocessing
 # for linear models (scaling + one hot)
@@ -60,8 +107,8 @@ preprocessor_linear = ColumnTransformer(
     transformers=[
         ("num", StandardScaler(), numeric_cols),
         ("cat", OneHotEncoder(drop="if_binary", handle_unknown="ignore"), categorical_cols)
-        
-    ]
+    ],
+    remainder="drop" 
 )
 
 # for tree models (just one hot, no scaling)
@@ -69,9 +116,9 @@ preprocessor_tree = ColumnTransformer(
     transformers=[
         ("num", "passthrough", numeric_cols),
         ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_cols)
-    ]
+    ],
+    remainder="drop" 
 )
-
 
 # base models
 base_models = {
@@ -79,49 +126,40 @@ base_models = {
         ("preprocessor", preprocessor_linear),
         ("model", LinearRegression())
     ]),
-    
     "Ridge": Pipeline([
         ("preprocessor", preprocessor_linear),
         ("model", Ridge())
     ]),
-    
     "Lasso": Pipeline([
         ("preprocessor", preprocessor_linear),
         ("model", Lasso())
     ]),
-    
     "Decision Tree": Pipeline([
         ("preprocessor", preprocessor_tree),
         ("model", DecisionTreeRegressor(random_state=42))
     ]),
-
     "Random Forest": Pipeline([
         ("preprocessor", preprocessor_tree),
-        ("model", RandomForestRegressor(random_state=42)) 
+        ("model", RandomForestRegressor(random_state=42))
     ]),
-         
     "XGBoost": Pipeline([
-        ("preprocessor", preprocessor_tree), 
-        ("model", XGBRegressor(random_state=42)) 
+        ("preprocessor", preprocessor_tree),
+        ("model", XGBRegressor(random_state=42, verbosity=0))
     ])
 }
 
-
 # training and comparison of base models
 results = []
-print(" \nBASE MODELS:")
+print("\nBASE MODELS:")
 for name, model in base_models.items():
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
-    
     r2 = r2_score(y_test, y_pred)
     mse = mean_squared_error(y_test, y_pred)
-    
-    results.append((name, r2, mse))
-    
+    results.append({"Model": name, "R2": r2, "MSE": mse})
     print(f"\n{name}")
-    print(f"R²: {r2:.3f}")
-    print(f"MSE: {mse:.3f}")
+    print(f"  R²:  {r2:.4f}")
+    print(f"  MSE: {mse:.4f}")
 
 
 # random forest grid search
@@ -141,28 +179,22 @@ rf_param_grid = {
 rf_grid = GridSearchCV(
     rf_pipeline,
     rf_param_grid,
-    cv=5,
+    cv=KFold(n_splits=5, shuffle=True, random_state=42),   
     scoring="r2",
     n_jobs=-1,
     verbose=1
 )
-
 rf_grid.fit(X_train, y_train)
 
 print("Miglior parametri RF:", rf_grid.best_params_)
 
 best_rf = rf_grid.best_estimator_
 y_pred_rf = best_rf.predict(X_test)
-
 r2_rf = r2_score(y_test, y_pred_rf)
 mse_rf = mean_squared_error(y_test, y_pred_rf)
 
-print("\nRandom Forest Ottimizzata")
-print(f"R²: {r2_rf:.3f}")
-print(f"MSE: {mse_rf:.3f}")
-
-results.append(("Random Forest Ottimizzata", r2_rf, mse_rf))
-
+print(f"\nRandom Forest Ottimizzata  ->  R²: {r2_rf:.4f}  |  MSE: {mse_rf:.4f}")
+results.append({"Model": "Random Forest Ottimizzata", "R2": r2_rf, "MSE": mse_rf})
 
 # xgboost grid search
 print("\nXGBOOST GRID SEARCH")
@@ -186,49 +218,40 @@ xgb_param_grid = {
 xgb_grid = GridSearchCV(
     xgb_pipeline,
     xgb_param_grid,
-    cv=5,
+    cv=KFold(n_splits=5, shuffle=True, random_state=42),  
     scoring="r2",
     n_jobs=-1,
     verbose=1
 )
-
 xgb_grid.fit(X_train, y_train)
 
-print("Best XGB params:", xgb_grid.best_params_)
+print("Migliori parametri XGB:", xgb_grid.best_params_)
 
 best_xgb = xgb_grid.best_estimator_
 y_pred_xgb = best_xgb.predict(X_test)
-
 r2_xgb = r2_score(y_test, y_pred_xgb)
 mse_xgb = mean_squared_error(y_test, y_pred_xgb)
 
-print("\nXGBoost Ottimizzata")
-print(f"R²: {r2_xgb:.3f}")
-print(f"MSE: {mse_xgb:.3f}")
+print(f"\nXGBoost Ottimizzata  ->  R²: {r2_xgb:.4f}  |  MSE: {mse_xgb:.4f}")
+results.append({"Model": "XGBoost Ottimizzata", "R2": r2_xgb, "MSE": mse_xgb})
 
-results.append(("XGBoost Ottimizzata", r2_xgb, mse_xgb))
-
-
-# view
-results_df = pd.DataFrame(results, columns=["Model", "R2", "MSE"])
-results_df = results_df.sort_values(by="R2", ascending=False)
-
+# final comparison
+results_df = pd.DataFrame(results).sort_values("R2", ascending=False)
 print("\nCONFRONTO FINALE MODELLI:")
-print(results_df)
+print(results_df.to_string(index=False))
 
 # ****** APPUNTI ******
-
 # R² -> quanto il modello si avvicina al valore reale,
 # R² = 1 valore perfetto, 0 media, < 0 peggio della media 
-# MSE -> errore medio al quadrato, di quanti $ si discosta dal valore reale
+# MSE -> errore medio al quadrato, di quanto si discosta dal valore reale
 
 # nel preprocessing negli alberi non ho messo il drop="if_binary" in quanto 
 # Per gli alberi è meglio non droppare mai la prima colonna. 
 # Gli alberi traggono vantaggio dalla ridondanza perché possono scegliere di fare
 # uno "split" su qualsiasi categoria in modo più diretto.
 # per gli alberi non si usa lo StandardScaler() in quanto gli alberi di decisione 
-# sono invarianti alla scala. Non gli importa se un numero è 0.001 o 1.000.000,
-# perché lavorano per "soglie" (es. Età > 30?). 
+# non variano in base alla scala. Non gli importa se un numero è 0.001 o 1.000.000,
+# perché lavorano per soglie (es. Età > 30?). 
 # Usando passthrough si risparmiano calcoli inutili.
 
 # quando si runna il codice compare 
@@ -244,34 +267,33 @@ print(results_df)
 # suggerendo la presenza di relazioni non lineari tra le variabili operative e l'indice di inefficienza.
 
 # Modelli Lineari:
-# Linear Regression → R² ≈ 0.33
-# Ridge → R² ≈ 0.32
-# Lasso → R² ≈ 0
+# Linear Regression → R² ≈ -0.20
+# Ridge → R² ≈ -0.18
+# Lasso → R² ≈ -0.05
 
-# Questi modelli spiegano solo circa il 30% della variabilità dell’indice di inefficienza.
+# Tutti questi modelli hanno avuto risultati peggiori della media.
 # Questo indica che la relazione tra variabili operative e inefficienza non è lineare, 
 # sono presenti interazioni complesse tra le feature che i modelli lineari non sono in grado di cogliere. 
-# Inoltre come ovviamente ci si aspettava dai dati, esiste multicollinearità 
-# (come evidenziato dall’analisi delle correlazioni). in particolare Lasso collassa praticamente a zero, 
-# segno che la penalizzazione elimina quasi tutta l’informazione utile 
+# Inoltre come ovviamente ci si aspettava dai dati, esiste multicollinearità (come evidenziato dall’analisi
+# delle correlazioni). segno che la penalizzazione elimina quasi tutta l’informazione utile 
 # in presenza di forte correlazione tra variabili.
  
 # Modelli ad Albero:
-# Decision Tree → R² ≈ 0.70
-# Random Forest → R² ≈ 0.840
-# Random Forest Ottimizzata → R² ≈ 0.843
-# XGBoost → R² ≈ 0.868
-# XGBoost Ottimizzata → R² ≈ 0.858  
+# Decision Tree → R² ≈ 0.23
+# Random Forest → R² ≈ 0.705
+# Random Forest Ottimizzata → R² ≈ 0.715
+# XGBoost → R² ≈ 0.783
+# XGBoost Ottimizzata → R² ≈ 0.763  
 
-# Questi modelli spiegano circa l’85–87% della variabilità. 
+# Questi modelli arrivano a spiegare circa il 78% della variabilità. 
 # Questo suggerisce che il sistema produttivo presenta dinamiche non lineari e che 
 # l’inefficienza dipende da combinazioni di variabili e non da effetti indipendenti.
 
 # XGBoost è il modello che ha ottenuto il miglior risultato con:
-# R² ≈ 0.868
+# R² ≈ 0.783
 # Dopo l'ottimizzazione si note che random forest è migliorata leggermente mentre XGBoost è peggiorato 
-# passando da 0.868 a 0.858, questo significa che il dataset è già ben modellato con parametri standard, 
+# passando da 0.783 a 0.763, questo significa che il dataset è già ben modellato con parametri standard, 
 # non c’è forte overfitting nel modello base e che la struttura dei dati è relativamente stabile.
-# il fatto che xgboost spieghi circa l'87% dell'inefficienza significa che l’Indice di Inefficienza 
+# il fatto che xgboost spieghi circa il 78% dell'inefficienza significa che l’Indice di Inefficienza 
 # non è casuale ma è fortemente legato alle variabili operative e che quindi è possibile costruire un 
 # sistema predittivo affidabile.
