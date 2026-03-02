@@ -16,22 +16,6 @@ from feature_engineering import pipeline_inefficienza
 # loading the clean datas of KOEPFER 160/2 machine
 df = pd.read_csv("../data/processed/koepfer_160_2.csv")
 
-# ****** APPUNTI ******
-# siccome nei dati ci sono gli articoli che hanno quasi tutti un numero diverso
-# e questo nell'addestramento con onehotencoding andrebbe a creare centinaia di colonne
-# ma allo stesso tempo non posso droppare l'intera colonna degli articoli in quanto
-# potrebbe comunque essere che alcune anomalie di produzione si verifichino solo quando ci 
-# sono determinati articoli per cui è comunque una colonna da cui il modello potrebbe imparare
-# allora droppo la colonna degli articoli e ne creo un'altra che abbia solo gli articoli che 
-# vengono ripetuti all'interno dei dati per più di 3 volte calcolandone poi la frequenza
-# in modo tale che sia studiabile dal modello
-# altre colonne che droppo oltre alla colonna che voglio predire sono
-# le colonne tempo lavoro e tempo teorico in quanto sono le colonne che formano 
-# la colonna di inefficienze che voglio predire, wo perchè non è utile in alcun modo 
-# all'addestramento, ID DAD per lo stesso motivo, Descrizione Macchina in quanto stiamo 
-# studiando sempre la stessa macchina, C.d.L. Effett, Data_Ora_Fine che viene
-# già estratta come feature temporali
-
 counts = df['ARTICOLO'].value_counts()
 
 threshold = 3 
@@ -169,7 +153,7 @@ def valuta_modello_regressione(name, y_true, y_pred):
         "RMSE": rmse,
     }
 
-# training and comparison of base models
+# comparison of base models
 results = []
 trained_models = {}
 print("\nBASE MODELS:")
@@ -277,27 +261,6 @@ joblib.dump(parametri, "../models/regression/parametri_prepocessing_regressione_
 print(f"Modello salvato in ../models/regression/best_regressione_inefficienza.pkl")
 print(f"Parametri salvati in ../models/regression/parametri_prepocessing_regressione_inefficienza.pkl")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ****** APPUNTI ******
 # R² (Coefficiente di Determinazione) -> quanto il modello si avvicina al valore reale,
 # MSE (Mean Squared Error) -> errore medio al quadrato, di quanto si discosta dal valore reale
@@ -309,6 +272,21 @@ print(f"Parametri salvati in ../models/regression/parametri_prepocessing_regress
 # Se il valore reale della variabile che voglio predire è 1.2 e il modello prevede 1.5 -> errore = 0.3 -> MSE = 0.03
 # esempio di RMSE: 
 # Se il valore reale della variabile che voglio predire è 1.2 e il modello prevede 1.5 -> RMSE = 0.3 
+
+# siccome nei dati ci sono gli articoli che hanno quasi tutti un numero diverso
+# e questo nell'addestramento con onehotencoding andrebbe a creare centinaia di colonne
+# ma allo stesso tempo non posso droppare l'intera colonna degli articoli in quanto
+# potrebbe comunque essere che alcune anomalie di produzione si verifichino solo quando ci 
+# sono determinati articoli per cui è comunque una colonna da cui il modello potrebbe imparare
+# allora droppo la colonna degli articoli e ne creo un'altra che abbia solo gli articoli che 
+# vengono ripetuti all'interno dei dati per più di 3 volte calcolandone poi la frequenza
+# in modo tale che sia studiabile dal modello
+# altre colonne che droppo oltre alla colonna che voglio predire sono
+# le colonne tempo lavoro e tempo teorico in quanto sono le colonne che formano 
+# la colonna di inefficienze che voglio predire, wo perchè non è utile in alcun modo 
+# all'addestramento, ID DAD per lo stesso motivo, Descrizione Macchina in quanto stiamo 
+# studiando sempre la stessa macchina, C.d.L. Effett, Data_Ora_Fine che viene
+# già estratta come feature temporali
 
 # nel preprocessing negli alberi non ho messo il drop="if_binary" in quanto 
 # Per gli alberi è meglio non droppare mai la prima colonna. 

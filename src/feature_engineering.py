@@ -55,20 +55,29 @@ def _add_rolling_and_lag(df: pd.DataFrame, colonna_base: str, window: int = 10, 
         df[f"lag_{lag}"] = df[colonna_base].shift(lag)
     return df
 
-# PIPELINE 1 - target: Indice_Inefficienza
+# PIPELINE 1 - target: regression Indice_Inefficienza
 def pipeline_inefficienza(df: pd.DataFrame, window: int = 10, lags: list = [1, 2, 3]) -> pd.DataFrame:
     df = add_time_features(df)
     df = _add_rolling_and_lag(df, colonna_base="Indice_Inefficienza", window=window, lags=lags)
     df = add_ratio_features(df)
-    df = df.dropna(subset=[f"lag_{l}" for l in lags]).reset_index(drop=True)
+    df = df.dropna(subset=[f"lag_{l}" for l in lags])
     return df
 
-# PIPELINE 2 - target: Tempo Lavoraz. ORE
+# PIPELINE 2 - target: classification Indice_Inefficienza
+def pipeline_classificazione(df: pd.DataFrame, window: int = 10, lags: list = [1, 2, 3]) -> pd.DataFrame:
+    df = add_time_features(df)
+    df = _add_rolling_and_lag(df, colonna_base="Indice_Inefficienza", window=window, lags=lags)
+    df = add_ratio_features(df)
+    df = df.dropna(subset=[f"lag_{l}" for l in lags])
+    return df
+
+# PIPELINE 3 - target: Tempo Lavoraz. ORE
 def pipeline_tempo(df: pd.DataFrame, window: int = 10, lags: list = [1, 2, 3]) -> pd.DataFrame:
     df = add_time_features(df)
     df = _add_rolling_and_lag(df, colonna_base="Tempo Lavoraz. ORE", window=window, lags=lags)
     df = add_ratio_features(df)
-    df = df.dropna(subset=[f"lag_{l}" for l in lags]).reset_index(drop=True)
+    df = df.dropna(subset=[f"lag_{l}" for l in lags])
     return df
+
 
 

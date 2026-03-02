@@ -343,7 +343,7 @@ print("Parametri salvati in ../models/regression/parametri_preprocessing_tempo.p
 
 
 # ****** APPUNTI ******
-#  Mean Absolute Percentage Error risponde a: "il modello sbaglia mediamente del X% nel predire il tempo?"
+# Mean Absolute Percentage Error risponde a: "il modello sbaglia mediamente del X% nel predire il tempo?"
 # il MAPE misura dunque l'errore percentuale medio tra i valori previsti e quelli effettivi.
 
 # Il modello non sta performando bene sul task temporale:

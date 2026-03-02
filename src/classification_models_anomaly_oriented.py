@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import warnings
 import joblib
 warnings.filterwarnings("ignore")
-from feature_engineering import pipeline_inefficienza
+from feature_engineering import pipeline_classificazione
 from sklearn.metrics import make_scorer, recall_score, f1_score, accuracy_score
 
 
@@ -31,7 +31,7 @@ df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
 freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
 df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
 
-df = pipeline_inefficienza(df)
+df = pipeline_classificazione(df)
 
 # class definition (target)
 p60 = df['Indice_Inefficienza'].quantile(0.60)
@@ -360,6 +360,11 @@ print(f"Parametri salvati in ../models/classification/parametri_classificazione_
 # True Positive Rate (TPR) / Sensibilità / Recall: Indica la percentuale di casi positivi correttamente identificati.
 # False Positive Rate (FPR): Indica la percentuale di casi negativi erroneamente classificati come positivi.
 # AUC (Area Under the Curve): Rappresenta l'area geometrica sottesa alla curva ROC.
+
+# F1-score (per classe) = Media armonica di precision e recall di quella singola classe
+# F1-macro = Media semplice degli F1-score di tutte le classi (NORMALE + ATTENZIONE + ANOMALIA / 3), 
+# senza pesare per quante osservazioni ha ogni classe
+# F1-weighted = Media degli F1-score pesata per il numero di campioni (support) di ogni classe
 
 # inizialmente bisogna decidere le soglie ovvero trasformare l'Indice_Inefficienza in classi discrete.
 # in base alle quali classifichiamo come normale, attenzione e anomalia  i risultati che otteniamo. 

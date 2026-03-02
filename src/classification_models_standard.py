@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import warnings
 import joblib
 warnings.filterwarnings("ignore")
-from feature_engineering import pipeline_inefficienza
+from feature_engineering import pipeline_classificazione
 
 # load datas
 df = pd.read_csv("../data/processed/koepfer_160_2.csv")
@@ -31,7 +31,7 @@ df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
 freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
 df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
 
-df = pipeline_inefficienza(df)
+df = pipeline_classificazione(df)
 
 # class definition (target)
 media = df['Indice_Inefficienza'].mean()
