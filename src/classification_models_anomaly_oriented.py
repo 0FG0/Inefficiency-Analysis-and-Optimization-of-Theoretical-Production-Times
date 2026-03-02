@@ -341,40 +341,25 @@ print(f"Parametri salvati in ../models/classification/parametri_classificazione_
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ****** APPUNTI ******
+
+# frequency encoding serve per contare quante sono le occorrenze di determinati articoli, se le occorrenze 
+# sono meno di 3 significa che non tiene conto di quegli articoli come variabile che può influenzare la
+# predizione dei modelli 
+
+# metriche calcolate:
+# ACCURACY = calcola la percentuale di risposte corrette
+
+# F1-SCORE = combina le metriche precisione e richiamo in un unico valore 
+# Precisione (Precision): Indica quanti dei casi positivi predetti sono effettivamente positivi (precisione delle previsioni positive).
+# Richiamo (Recall/Sensitivity): Indica quanti dei casi positivi reali sono stati effettivamente identificati dal modello
+
+# ROC-AUC = misura quanto un modello è in grado di distinguere tra le classi a diversi livelli di soglia.
+# Curva ROC (Receiver Operating Characteristic): È un grafico che mostra la performance del modello tracciando due parametri
+# al variare della soglia di classificazione:
+# True Positive Rate (TPR) / Sensibilità / Recall: Indica la percentuale di casi positivi correttamente identificati.
+# False Positive Rate (FPR): Indica la percentuale di casi negativi erroneamente classificati come positivi.
+# AUC (Area Under the Curve): Rappresenta l'area geometrica sottesa alla curva ROC.
 
 # inizialmente bisogna decidere le soglie ovvero trasformare l'Indice_Inefficienza in classi discrete.
 # in base alle quali classifichiamo come normale, attenzione e anomalia  i risultati che otteniamo. 
@@ -384,7 +369,7 @@ print(f"Parametri salvati in ../models/classification/parametri_classificazione_
 #   ANOMALIA    > mean + 1std
 # in base ai nostri dati:
 #   NORMALE     ≤ 1.185 -> lavorazione nella norma
-#   ATTENZIONE  1.185 – 1.47 -> lieve inefficienza, da monitorare
+#   ATTENZIONE  1.185 - 1.47 -> lieve inefficienza, da monitorare
 #   ANOMALIA    > 1.47 -> inefficienza significativa
 # la media e l'std sono però più influenzati dalla skweness e non
 # hanno risultato dare valori particolarmente performanti
@@ -419,7 +404,6 @@ print(f"Parametri salvati in ../models/classification/parametri_classificazione_
 # come si può notare dalla matrice confusione i dati che vengono predetti meglio sono i dati
 # relativi alla classe normale (46), mentre i peggiori sono della classe attenzione (1) e anomalie (7)
 
-
 # risultati allenando il modello in maniera anomaly oriented:
 
 # modificando il codice cambiando le soglie usando i quantili (60° percentile) (85° percentile) al posto 
@@ -435,9 +419,8 @@ print(f"Parametri salvati in ../models/classification/parametri_classificazione_
 #   ANOMALIA    > 85° percentile
 # in base ai nostri dati:
 #   NORMALE     ≤ 1.1466 -> lavorazione nella norma
-#   ATTENZIONE  1.1466 – 1.4311 -> lieve inefficienza, da monitorare
+#   ATTENZIONE  1.1466 - 1.4311 -> lieve inefficienza, da monitorare
 #   ANOMALIA    > 1.4311 -> inefficienza significativa
-
 
 # addestrando inoltre i modelli ottimizzati in modo tale che non 
 # sia semplicemente una valutazione standard ma aumentando il recall delle anomalie ovvero:

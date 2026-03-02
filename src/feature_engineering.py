@@ -12,8 +12,8 @@
 # mai il valore corrente della riga che stiamo cercando di predire.
 # Questo file va applicato prima dello split train/test.
 # QUESTO FILE SUPPORTA DUE USE CASE:
-#   1. target = "Indice_Inefficienza"  → pipeline_inefficienza()
-#   2. target = "Tempo Lavoraz. ORE"   → pipeline_tempo()
+# 1. target = "Indice_Inefficienza"  → pipeline_inefficienza()
+# 2. target = "Tempo Lavoraz. ORE"   → pipeline_tempo()
 # La differenza è solo nella colonna usata per lag e rolling features,
 # perché Indice_Inefficienza è calcolato da Tempo Lavoraz. ORE:
 # usare l'uno come base quando l'altro è il target sarebbe leakage indiretto.
@@ -55,7 +55,7 @@ def _add_rolling_and_lag(df: pd.DataFrame, colonna_base: str, window: int = 10, 
         df[f"lag_{lag}"] = df[colonna_base].shift(lag)
     return df
 
-# PIPELINE 1 – target: Indice_Inefficienza
+# PIPELINE 1 - target: Indice_Inefficienza
 def pipeline_inefficienza(df: pd.DataFrame, window: int = 10, lags: list = [1, 2, 3]) -> pd.DataFrame:
     df = add_time_features(df)
     df = _add_rolling_and_lag(df, colonna_base="Indice_Inefficienza", window=window, lags=lags)
@@ -63,7 +63,7 @@ def pipeline_inefficienza(df: pd.DataFrame, window: int = 10, lags: list = [1, 2
     df = df.dropna(subset=[f"lag_{l}" for l in lags]).reset_index(drop=True)
     return df
 
-# PIPELINE 2 – target: Tempo Lavoraz. ORE
+# PIPELINE 2 - target: Tempo Lavoraz. ORE
 def pipeline_tempo(df: pd.DataFrame, window: int = 10, lags: list = [1, 2, 3]) -> pd.DataFrame:
     df = add_time_features(df)
     df = _add_rolling_and_lag(df, colonna_base="Tempo Lavoraz. ORE", window=window, lags=lags)

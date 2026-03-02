@@ -18,6 +18,7 @@ from feature_engineering import pipeline_tempo
 # load data 
 df = pd.read_csv("../data/processed/koepfer_160_2.csv")
 
+#frequency encoding
 counts = df['ARTICOLO'].value_counts()
 threshold = 3
 df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
@@ -26,7 +27,6 @@ df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
 )
 freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
 df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
-
 
 # feature
 df = pipeline_tempo(df)
@@ -133,7 +133,7 @@ base_models = {
     ])
 }
 
-# training and comparison of base models
+# comparison of base models
 results = []
 trained_models = {}
 print("\nBASE MODELS:")
@@ -282,7 +282,7 @@ mape_ml_val = np.mean(
 riduzione_rmse = (rmse_as400 - rmse_ml) / rmse_as400 * 100
 riduzione_mape = (mape_as400_val - mape_ml_val) / mape_as400_val * 100
 
-print(f"\n\nSTATISTICHE DI CONFRONTO – {nome_best} vs Tempo Teorico AS400:")
+print(f"\n\nSTATISTICHE DI CONFRONTO - {nome_best} vs Tempo Teorico AS400:")
 print(f"  Campioni nel test set:                    {n_test}")
 print(f"  Casi in cui ML è più preciso di AS400:    {n_migliora} / {n_test}  ({pct_migliora:.1f}%)")
 print(f"")
@@ -293,7 +293,6 @@ print(f"")
 print(f"  MAPE Tempo Teorico AS400:                 {mape_as400_val:.2f}%")
 print(f"  MAPE Modello ML:                          {mape_ml_val:.2f}%")
 print(f"  Riduzione MAPE:                           {riduzione_mape:.1f}%")
-
 
 # graph comparing teoric time predicted vs real teoric time
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -343,15 +342,9 @@ print("\nModello salvato in ../models/regression/best_regressione_time.pkl")
 print("Parametri salvati in ../models/regression/parametri_preprocessing_tempo.pkl")
 
 
-
-
-
-
-
-
-
 # ****** APPUNTI ******
 #  Mean Absolute Percentage Error risponde a: "il modello sbaglia mediamente del X% nel predire il tempo?"
+# il MAPE misura dunque l'errore percentuale medio tra i valori previsti e quelli effettivi.
 
 # Il modello non sta performando bene sul task temporale:
 # Solo 23/78 casi (29.5%) il ML batte AS400

@@ -53,7 +53,7 @@ cols_to_drop = [
     "WO",                           
     "ARTICOLO",                     
     "Descrizione Articolo",
-    'ARTICOLO_grouped'         
+    'ARTICOLO_grouped',         
     "ID DAD",                       
     "Descrizione Macchina",         
     "C.d.L. Effett",                
