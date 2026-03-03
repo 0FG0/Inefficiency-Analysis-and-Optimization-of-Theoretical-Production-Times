@@ -3,6 +3,7 @@ import numpy as np
 import os
 import joblib
 from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from sklearn.tree import DecisionTreeRegressor
@@ -11,7 +12,6 @@ from xgboost import XGBRegressor
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import KFold
 from feature_engineering import pipeline_inefficienza
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -6,8 +6,8 @@ import warnings
 import joblib
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold
 from sklearn.metrics import (classification_report, confusion_matrix, roc_auc_score, ConfusionMatrixDisplay)
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score, accuracy_score
+from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -28,15 +28,18 @@ PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "parametri_
 # load datas
 df = pd.read_csv(DATA_PATH)
 
-# frequency encoding 
+if "ARTICOLO" in df.columns:
+    df["ARTICOLO"] = df["ARTICOLO"].fillna("MISSING_ARTICOLO").astype(str)
+
+# ARTICOLO_grouped + OHE
 counts = df['ARTICOLO'].value_counts()
-threshold = 3
+TOP_N_ARTICOLI = 20
+articoli_top = counts.head(TOP_N_ARTICOLI).index
 df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
-    df['ARTICOLO'].isin(counts[counts >= threshold].index),
+    df['ARTICOLO'].isin(articoli_top),
     other='ALTRO'
 )
-freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
-df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
+df['ARTICOLO_grouped'] = df['ARTICOLO_grouped'].fillna('ALTRO').astype(str)
 
 df = pipeline_classificazione(df)
 
@@ -78,7 +81,6 @@ cols_to_drop = [
     "WO",
     "ARTICOLO",
     "Descrizione Articolo",
-    "ARTICOLO_grouped",
     "ID DAD",
     "Descrizione Macchina",
     "C.d.L. Effett",
@@ -96,6 +98,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 # columns identification
 categorical_cols = [
     col for col in [
+        "ARTICOLO_grouped",
         "FASE",
         "Cod CIC",
         "C.d.L. Prev",
@@ -105,6 +108,13 @@ categorical_cols = [
 ]
 
 numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+
+# convert null in -> 'MISSING'
+for col in categorical_cols:
+    if col in X_train.columns:
+        X_train[col] = X_train[col].astype('string').fillna('MISSING')
+    if col in X_test.columns:
+        X_test[col] = X_test[col].astype('string').fillna('MISSING')
 
 # preprocessing
 # for linear models (scaling + one hot)
@@ -186,6 +196,7 @@ def valuta_modello(name, y_true, y_pred, y_proba=None):
 # training and comparison of base models
 results = []
 trained_models = {}
+predizioni_test = {}
 print("\nBASE MODELS:")
 for name, model in base_models.items():
     model.fit(X_train, y_train)
@@ -199,6 +210,7 @@ for name, model in base_models.items():
     f1  = f1_score(y_test, y_pred, average="macro", zero_division=0)
     results.append({"Model": name, "Accuracy": acc, "F1-macro": f1})
     trained_models[name] = model
+    predizioni_test[name] = y_pred
 
 # random forest grid search
 print("\n\nRANDOM FOREST - GRID SEARCH")
@@ -209,10 +221,10 @@ rf_pipeline = Pipeline([
 ])
 
 rf_param_grid = {
-    "model__n_estimators":    [200, 400],
-    "model__max_depth":       [None, 10, 20],
+    "model__n_estimators": [200, 400],
+    "model__max_depth": [None, 10, 20],
     "model__min_samples_split": [2, 5],
-    "model__min_samples_leaf":  [1, 3]
+    "model__min_samples_leaf": [1, 3]
 }
 
 rf_grid = GridSearchCV(
@@ -227,8 +239,8 @@ rf_grid.fit(X_train, y_train)
 print("Migliori parametri RF:", rf_grid.best_params_)
 
 best_rf = rf_grid.best_estimator_
-y_pred_rf    = best_rf.predict(X_test)
-y_proba_rf   = best_rf.predict_proba(X_test)
+y_pred_rf = best_rf.predict(X_test)
+y_proba_rf = best_rf.predict_proba(X_test)
 valuta_modello("Random Forest Ottimizzata", y_test, y_pred_rf, y_proba_rf)
 
 results.append({
@@ -237,6 +249,7 @@ results.append({
     "F1-macro":   f1_score(y_test, y_pred_rf, average="macro", zero_division=0)
 })
 trained_models["Random Forest Ottimizzata"] = best_rf
+predizioni_test["Random Forest Ottimizzata"] = y_pred_rf
 
 # xgboost grid search
 print("\n\nXGBOOST - GRID SEARCH")
@@ -253,10 +266,10 @@ xgb_pipeline = Pipeline([
 ])
 
 xgb_param_grid = {
-    "model__n_estimators":  [200, 400],
-    "model__max_depth":     [3, 6, 10],
+    "model__n_estimators": [200, 400],
+    "model__max_depth": [3, 6, 10],
     "model__learning_rate": [0.01, 0.1],
-    "model__subsample":     [0.8, 1.0]
+    "model__subsample": [0.8, 1.0]
 }
 
 xgb_grid = GridSearchCV(
@@ -270,9 +283,9 @@ xgb_grid = GridSearchCV(
 xgb_grid.fit(X_train, y_train)
 print("Migliori parametri XGB:", xgb_grid.best_params_)
 
-best_xgb     = xgb_grid.best_estimator_
-y_pred_xgb   = best_xgb.predict(X_test)
-y_proba_xgb  = best_xgb.predict_proba(X_test)
+best_xgb = xgb_grid.best_estimator_
+y_pred_xgb = best_xgb.predict(X_test)
+y_proba_xgb = best_xgb.predict_proba(X_test)
 valuta_modello("XGBoost Ottimizzata", y_test, y_pred_xgb, y_proba_xgb)
 
 results.append({
@@ -281,45 +294,44 @@ results.append({
     "F1-macro": f1_score(y_test, y_pred_xgb, average="macro", zero_division=0)
 })
 trained_models["XGBoost Ottimizzata"] = best_xgb
+predizioni_test["XGBoost Ottimizzata"] = y_pred_xgb
 
 # final comparison 
 results_df = pd.DataFrame(results).sort_values("F1-macro", ascending=False)
 print("\n\nCONFRONTO FINALE MODELLI:")
 print(results_df.to_string(index=False))
 
+# save model
+best_model_name = max(results, key=lambda x: x["F1-macro"])["Model"]
+best_model = trained_models[best_model_name]
+best_f1 = max(r["F1-macro"] for r in results)
+best_y_pred = predizioni_test[best_model_name]
+
+print(f"\nModello migliore: {best_model_name}  (F1-macro: {best_f1:.4f})")
+
 # confusion matrix
-print("\nMatrice di confusione - Random Forest Ottimizzata:")
-cm = confusion_matrix(y_test, y_pred_rf)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm,
-                               display_labels=["NORMALE", "ATTENZIONE", "ANOMALIA"])
+print(f"\nMatrice di confusione - {best_model_name}:")
+cm = confusion_matrix(y_test, best_y_pred)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["NORMALE", "ATTENZIONE", "ANOMALIA"])
 fig, ax = plt.subplots(figsize=(6, 5))
 disp.plot(ax=ax, cmap="Blues", colorbar=False)
-ax.set_title("Confusion Matrix - Random Forest Ottimizzata")
+ax.set_title(f"Confusion Matrix - {best_model_name}")
 plt.tight_layout()
 os.makedirs(os.path.dirname(OUTPUT_CM_PATH), exist_ok=True)
 plt.savefig(OUTPUT_CM_PATH, dpi=150)
 plt.show()
 print(f"  Matrice salvata in {OUTPUT_CM_PATH}")
 
-
-# save model
-best_model_name = max(results, key=lambda x: x["F1-macro"])["Model"]
-best_model      = trained_models[best_model_name]
-best_f1         = max(r["F1-macro"] for r in results)
-
-print(f"\nModello migliore: {best_model_name}  (F1-macro: {best_f1:.4f})")
-
 os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 joblib.dump(best_model, MODEL_PATH)
 
 parametri_standard = {
-    "freq_map":           freq_map,
-    "articoli_frequenti": counts[counts >= threshold].index.tolist(),
-    "threshold":          threshold,
-    "soglia_attenzione":  SOGLIA_ATTENZIONE,
-    "soglia_anomalia":    SOGLIA_ANOMALIA,
-    "tipo_soglie":        "mean_std",
-    "modello_scelto":     best_model_name,
+    "articoli_top": articoli_top.tolist(),
+    "top_n_articoli": TOP_N_ARTICOLI,
+    "soglia_attenzione": SOGLIA_ATTENZIONE,
+    "soglia_anomalia": SOGLIA_ANOMALIA,
+    "tipo_soglie": "mean_std",
+    "modello_scelto": best_model_name,
 }
 joblib.dump(parametri_standard, PARAMS_PATH)
 
