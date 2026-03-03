@@ -40,19 +40,19 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 PATHS = {
     "regressione_inefficienza": {
-        "model":  os.path.join(MODELS_DIR, "regression", "best_regressione_inefficienza.pkl"),
+        "model": os.path.join(MODELS_DIR, "regression", "best_regressione_inefficienza.pkl"),
         "params": os.path.join(MODELS_DIR, "regression", "parametri_prepocessing_regressione_inefficienza.pkl"),
     },
     "regressione_tempo": {
-        "model":  os.path.join(MODELS_DIR, "regression", "best_regressione_time.pkl"),
+        "model": os.path.join(MODELS_DIR, "regression", "best_regressione_time.pkl"),
         "params": os.path.join(MODELS_DIR, "regression", "parametri_preprocessing_tempo.pkl"),
     },
     "classificazione_standard": {
-        "model":  os.path.join(MODELS_DIR, "classification", "best_classificazione_standard.pkl"),
+        "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_standard.pkl"),
         "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_standard.pkl"),
     },
     "classificazione_anomaly": {
-        "model":  os.path.join(MODELS_DIR, "classification", "best_classificazione_anomaly.pkl"),
+        "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_anomaly.pkl"),
         "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_anomaly.pkl"),
     },
 }
@@ -67,7 +67,6 @@ COLS_TO_DROP = [
     "WO",
     "ARTICOLO",
     "Descrizione Articolo",
-    "ARTICOLO_grouped",
     "ID DAD",
     "Descrizione Macchina",
     "C.d.L. Effett",
@@ -88,22 +87,40 @@ def carica_modello(nome: str):
     params = joblib.load(paths["params"])
     return model, params
 
-# frequency encoding
-def applica_frequency_encoding(df: pd.DataFrame, params: dict) -> pd.DataFrame:
-    freq_map = params["freq_map"]
-    articoli_frequenti = set(params["articoli_frequenti"])
-    df["ARTICOLO_grouped"] = df["ARTICOLO"].where(
-        df["ARTICOLO"].isin(articoli_frequenti),
-        other="ALTRO"
-    )
-    freq_altro = freq_map.get("ALTRO", 0.0)
-    df["ARTICOLO_freq"] = df["ARTICOLO_grouped"].map(freq_map).fillna(freq_altro)
+# article encoding (ARTICOLO_grouped + OHE)
+def applica_encoding_articolo(df: pd.DataFrame, params: dict) -> pd.DataFrame:
+    if "ARTICOLO" not in df.columns:
+        return df
+
+    if "articoli_top" in params:
+        df["ARTICOLO"] = df["ARTICOLO"].fillna("MISSING_ARTICOLO").astype(str)
+        articoli_top = set(map(str, params["articoli_top"]))
+        df["ARTICOLO_grouped"] = df["ARTICOLO"].where(
+            df["ARTICOLO"].isin(articoli_top),
+            other="ALTRO"
+        )
+        df["ARTICOLO_grouped"] = df["ARTICOLO_grouped"].fillna("ALTRO").astype(str)
+        return df
+
     return df
 
 # removes columns
 def prepara_X(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=COLS_TO_DROP, errors="ignore")
 
+
+def normalizza_categoriche_inferenza(df: pd.DataFrame) -> pd.DataFrame:
+    categorical_cols = [
+        "ARTICOLO_grouped",
+        "FASE",
+        "Cod CIC",
+        "C.d.L. Prev",
+        "Descrizione Centro di Lavoro previsto",
+    ]
+    for col in categorical_cols:
+        if col in df.columns:
+            df[col] = df[col].astype("string").fillna("MISSING")
+    return df
 
 # functions prediction
 def predici_inefficienza(df_raw: pd.DataFrame) -> pd.Series:
@@ -112,8 +129,9 @@ def predici_inefficienza(df_raw: pd.DataFrame) -> pd.Series:
     model, params = carica_modello("regressione_inefficienza")
 
     df = df_raw.copy()
-    df = applica_frequency_encoding(df, params)
+    df = applica_encoding_articolo(df, params)
     df = pipeline_inefficienza(df)
+    df = normalizza_categoriche_inferenza(df)
     X  = prepara_X(df)
 
     predizioni = model.predict(X)
@@ -124,8 +142,9 @@ def predici_tempo(df_raw: pd.DataFrame) -> pd.Series:
     model, params = carica_modello("regressione_tempo")
 
     df = df_raw.copy()
-    df = applica_frequency_encoding(df, params)
+    df = applica_encoding_articolo(df, params)
     df = pipeline_tempo(df)
+    df = normalizza_categoriche_inferenza(df)
     X  = prepara_X(df)
 
     predizioni = model.predict(X)
@@ -136,8 +155,9 @@ def predici_classe_standard(df_raw: pd.DataFrame) -> pd.Series:
     model, params = carica_modello("classificazione_standard")
 
     df = df_raw.copy()
-    df = applica_frequency_encoding(df, params)
+    df = applica_encoding_articolo(df, params)
     df = pipeline_classificazione(df)
+    df = normalizza_categoriche_inferenza(df)
     X  = prepara_X(df)
 
     classi = model.predict(X)
@@ -151,8 +171,9 @@ def predici_classe_anomaly(df_raw: pd.DataFrame) -> pd.Series:
     soglia_attenzione = params.get("soglia_proba_attenzione", 0.35)
 
     df = df_raw.copy()
-    df = applica_frequency_encoding(df, params)
+    df = applica_encoding_articolo(df, params)
     df = pipeline_classificazione(df)
+    df = normalizza_categoriche_inferenza(df)
     X  = prepara_X(df)
 
     proba = model.predict_proba(X)

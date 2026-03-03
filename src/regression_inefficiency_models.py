@@ -23,16 +23,18 @@ PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "parametri_prep
 # loading the clean datas of KOEPFER 160/2 machine
 df = pd.read_csv(DATA_PATH)
 
-# frequency encoding 
+if "ARTICOLO" in df.columns:
+    df["ARTICOLO"] = df["ARTICOLO"].fillna("MISSING_ARTICOLO").astype(str)
+
+# ARTICOLO_grouped + OHE
 counts = df['ARTICOLO'].value_counts()
-threshold = 3 
+TOP_N_ARTICOLI = 20
+articoli_top = counts.head(TOP_N_ARTICOLI).index
 df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
-    df['ARTICOLO'].isin(counts[counts >= threshold].index), 
+    df['ARTICOLO'].isin(articoli_top), 
     other='ALTRO'
 )
-
-freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
-df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
+df['ARTICOLO_grouped'] = df['ARTICOLO_grouped'].fillna('ALTRO').astype(str)
 
 # applying feature engineering
 df = pipeline_inefficienza(df)
@@ -44,7 +46,6 @@ cols_to_drop = [
     "WO",                           
     "ARTICOLO",                     
     "Descrizione Articolo",
-    'ARTICOLO_grouped',         
     "ID DAD",                       
     "Descrizione Macchina",         
     "C.d.L. Effett",                
@@ -83,6 +84,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 # columns identification
 categorical_cols = [
     col for col in [
+        "ARTICOLO_grouped",
         "FASE",
         "Cod CIC",
         "C.d.L. Prev",
@@ -92,6 +94,12 @@ categorical_cols = [
 ]
 
 numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+
+for col in categorical_cols:
+    if col in X_train.columns:
+        X_train[col] = X_train[col].astype('string').fillna('MISSING')
+    if col in X_test.columns:
+        X_test[col] = X_test[col].astype('string').fillna('MISSING')
 
 # preprocessing
 # for linear models (scaling + one hot)
@@ -259,9 +267,8 @@ os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 joblib.dump(best_model, MODEL_PATH)
 
 parametri = {
-    "freq_map":           freq_map,
-    "articoli_frequenti": counts[counts >= threshold].index.tolist(),
-    "threshold":          threshold,
+    "articoli_top":       articoli_top.tolist(),
+    "top_n_articoli":     TOP_N_ARTICOLI,
     "modello_scelto":     best_model_name,
 }
 joblib.dump(parametri, PARAMS_PATH)

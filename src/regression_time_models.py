@@ -26,15 +26,18 @@ PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "parametri_prep
 # load data 
 df = pd.read_csv(DATA_PATH)
 
-#frequency encoding
+# ARTICOLO_grouped + OHE
+if "ARTICOLO" in df.columns:
+    df["ARTICOLO"] = df["ARTICOLO"].fillna("MISSING_ARTICOLO").astype(str)
+
 counts = df['ARTICOLO'].value_counts()
-threshold = 3
+TOP_N_ARTICOLI = 20
+articoli_top = counts.head(TOP_N_ARTICOLI).index
 df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
-    df['ARTICOLO'].isin(counts[counts >= threshold].index),
+    df['ARTICOLO'].isin(articoli_top),
     other='ALTRO'
 )
-freq_map = df['ARTICOLO_grouped'].value_counts(normalize=True)
-df['ARTICOLO_freq'] = df['ARTICOLO_grouped'].map(freq_map)
+df['ARTICOLO_grouped'] = df['ARTICOLO_grouped'].fillna('ALTRO').astype(str)
 
 # feature
 df = pipeline_tempo(df)
@@ -49,7 +52,6 @@ cols_to_drop = [
     "WO",
     "ARTICOLO",
     "Descrizione Articolo",
-    "ARTICOLO_grouped",
     "ID DAD",
     "Descrizione Macchina",
     "C.d.L. Effett",
@@ -84,10 +86,17 @@ confronto_test = confronto_cols.loc[X_test.index].copy()
 
 # columns identification
 categorical_cols = [
-    col for col in ["FASE", "Cod CIC", "C.d.L. Prev", "Descrizione Centro di Lavoro previsto"]
+    col for col in ["ARTICOLO_grouped", "FASE", "Cod CIC", "C.d.L. Prev", "Descrizione Centro di Lavoro previsto"]
     if col in X.columns
 ]
+
 numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+
+for col in categorical_cols:
+    if col in X_train.columns:
+        X_train[col] = X_train[col].astype('string').fillna('MISSING')
+    if col in X_test.columns:
+        X_test[col] = X_test[col].astype('string').fillna('MISSING')
 
 # preprocessing
 # for linear models (scaling + one hot)
@@ -340,9 +349,8 @@ print(f"\nModello migliore: {best_model_name}  (MAPE: {best_mape:.2f}%)")
 os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 joblib.dump(best_model, MODEL_PATH)
 parametri_tempo = {
-    "freq_map":           freq_map,
-    "articoli_frequenti": counts[counts >= threshold].index.tolist(),
-    "threshold":          threshold,
+    "articoli_top":       articoli_top.tolist(),
+    "top_n_articoli":     TOP_N_ARTICOLI,
 }
 joblib.dump(parametri_tempo, PARAMS_PATH)
 

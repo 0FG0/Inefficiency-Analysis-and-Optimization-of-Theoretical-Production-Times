@@ -1,6 +1,6 @@
-# Optimization of Theoretical Production Times and Inefficiency Analysis through Machine Learning
+# Inefficiency Analysis and Optimization of Theoretical Production Times through Machine Learning
 
-This project develops machine learning models to improve manufacturing processing time estimation. It analyzes production inefficiencies compared to company standards. Through regression and classification techniques, the system identifies operational anomalies and redefines theoretical times more consistently with actual times. The goal is to support industrial decision-making with quantitative and replicable predictive tools.
+This project develops machine learning models to analyze and predict production inefficiencies in industrial machinery and improve the estimation of theoretical processing times. Using regression and classification techniques, the system identifies operational anomalies and redefines theoretical times more consistently with actual times. The goal is to support industrial decision-making with quantitative and replicable predictive tools.
 
 ## 1. Features 📊
 
@@ -23,8 +23,8 @@ This project develops machine learning models to improve manufacturing processin
 ### Prerequisites
 
 - Python 3.10+
-- Pip aggiornato
-- Ambiente virtuale (venv) consigliato
+- Pip updated
+- Virtual Environment (venv) recommended
 
 ### - Clone the repository
 
@@ -57,6 +57,8 @@ This project develops machine learning models to improve manufacturing processin
     pip install --upgrade pip
     pip install -r requirements.txt
 ```
+
+---
 
 ## 3. Usage 🚀
 
