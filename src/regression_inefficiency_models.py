@@ -3,7 +3,7 @@ import numpy as np
 import os
 import joblib
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, TimeSeriesSplit, cross_val_score
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from sklearn.tree import DecisionTreeRegressor
@@ -262,6 +262,26 @@ best_model_name = min(
 best_model = trained_models[best_model_name]
 best_rmse = min(r["RMSE"] for r in results)
 print(f"\nModello migliore: {best_model_name}  (RMSE: {best_rmse:.4f})")
+
+# cross-validation esterna (stima robusta delle performance)
+if "Data_Ora_Fine" in df.columns and len(X) >= 10:
+    cv_esterna = TimeSeriesSplit(n_splits=5)
+    cv_descrizione = "TimeSeriesSplit 5-fold"
+else:
+    cv_esterna = KFold(n_splits=5, shuffle=True, random_state=42)
+    cv_descrizione = "KFold 5-fold"
+
+cv_mae_neg = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="neg_mean_absolute_error", n_jobs=-1)
+cv_mse_neg = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="neg_mean_squared_error", n_jobs=-1)
+cv_r2 = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="r2", n_jobs=-1)
+
+cv_mae = -cv_mae_neg
+cv_rmse = np.sqrt(-cv_mse_neg)
+
+print(f"\nSTIMA ROBUSTA CV ESTERNA ({cv_descrizione}) - media ± std:")
+print(f"  MAE:  {cv_mae.mean():.4f} ± {cv_mae.std():.4f}")
+print(f"  RMSE: {cv_rmse.mean():.4f} ± {cv_rmse.std():.4f}")
+print(f"  R²:   {cv_r2.mean():.4f} ± {cv_r2.std():.4f}")
 
 os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 joblib.dump(best_model, MODEL_PATH)

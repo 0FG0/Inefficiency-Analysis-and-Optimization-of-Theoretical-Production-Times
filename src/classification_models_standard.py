@@ -21,7 +21,7 @@ from feature_engineering import pipeline_classificazione
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DATA_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "koepfer_160_2.csv")
-OUTPUT_CM_PATH = os.path.join(PROJECT_ROOT, "outputs", "confusion_matrix_rf_standard.png")
+OUTPUT_CM_PATH = os.path.join(PROJECT_ROOT, "outputs", "confusion_matrix_standard.png")
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "best_classificazione_standard.pkl")
 PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "parametri_classificazione_standard.pkl")
 
@@ -183,8 +183,7 @@ def valuta_modello(name, y_true, y_pred, y_proba=None):
     print(f"\n{'='*50}")
     print(f"  {name}")
     print(f"{'='*50}")
-    print(classification_report(y_true, y_pred,
-                                 target_names=["NORMALE", "ATTENZIONE", "ANOMALIA"],
+    print(classification_report(y_true, y_pred, target_names=["NORMALE", "ATTENZIONE", "ANOMALIA"],
                                  zero_division=0))
     if y_proba is not None:
         try:
@@ -244,9 +243,9 @@ y_proba_rf = best_rf.predict_proba(X_test)
 valuta_modello("Random Forest Ottimizzata", y_test, y_pred_rf, y_proba_rf)
 
 results.append({
-    "Model":      "Random Forest Ottimizzata",
-    "Accuracy":   accuracy_score(y_test, y_pred_rf),
-    "F1-macro":   f1_score(y_test, y_pred_rf, average="macro", zero_division=0)
+    "Model": "Random Forest Ottimizzata",
+    "Accuracy": accuracy_score(y_test, y_pred_rf),
+    "F1-macro": f1_score(y_test, y_pred_rf, average="macro", zero_division=0)
 })
 trained_models["Random Forest Ottimizzata"] = best_rf
 predizioni_test["Random Forest Ottimizzata"] = y_pred_rf
@@ -289,7 +288,7 @@ y_proba_xgb = best_xgb.predict_proba(X_test)
 valuta_modello("XGBoost Ottimizzata", y_test, y_pred_xgb, y_proba_xgb)
 
 results.append({
-    "Model":    "XGBoost Ottimizzata",
+    "Model": "XGBoost Ottimizzata",
     "Accuracy": accuracy_score(y_test, y_pred_xgb),
     "F1-macro": f1_score(y_test, y_pred_xgb, average="macro", zero_division=0)
 })
