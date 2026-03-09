@@ -42,6 +42,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from feature_engineering import pipeline_inefficienza, pipeline_tempo, pipeline_classificazione
 from OEE.OEE_feature_engineering import aggiungi_feature_oee
+from OEE.OEE_calculator import calcola_oee
 
 # models path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -297,11 +298,20 @@ def main(path_input: str, path_output: str = None):
     id_cols = [c for c in id_cols if c in df.columns]
 
     risultati = df[id_cols].copy()
+    insert_pos = risultati.columns.get_loc("Tempo Lavoraz. ORE")
+    risultati.insert(insert_pos, "Tempo_Predetto_ORE", pred_tempo)
     risultati = risultati.join(pred_inefficienza)
-    risultati = risultati.join(pred_tempo)
     risultati = risultati.join(pred_anomaly)
     risultati = risultati.join(pred_anomaly_BD)
     risultati = risultati.join(pred_soglie_custom)
+
+    try:
+        df_oee = calcola_oee(df)
+        oee_reale = df_oee["OEE"].rename("OEE_Reale")
+    except Exception as e:
+        print(f"  [ERRORE] Calcolo OEE reale: {e}")
+        oee_reale = pd.Series([np.nan] * len(df), index=df.index, name="OEE_Reale")
+    risultati = risultati.join(oee_reale)
     risultati = risultati.join(pred_oee)
 
     print("\n" + "="*70)
