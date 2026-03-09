@@ -249,6 +249,41 @@ def calendario_tutti_mesi(df: pd.DataFrame) -> list:
     return result
 
 
+def wo_per_giorno(df: pd.DataFrame) -> dict:
+    """
+    Per ogni giorno con lavorazioni, restituisce la lista dei WO con dettagli.
+    Chiave: "YYYY-MM-DD".
+    """
+    if "Data_Ora_Fine" not in df.columns:
+        return {}
+
+    df = df.copy()
+    df["_data_str"] = df["Data_Ora_Fine"].dt.strftime("%Y-%m-%d")
+
+    result = {}
+    for data_str, group in df.groupby("_data_str"):
+        records = []
+        for _, row in group.iterrows():
+            pred = int(row.get("classe_pred", 0) or 0)
+            prob = float(row.get("prob_anomalia", 0) or 0)
+            if pred == 1:
+                stato = "ANOMALIA" if prob >= 0.60 else "ATTENZIONE"
+            else:
+                stato = "NORMALE"
+            ore_reali    = row.get("Tempo Lavoraz. ORE", None)
+            ore_teoriche = row.get("Tempo_Teorico_TOT_ORE", None)
+            records.append({
+                "WO":          str(row.get("WO", "—") or "—"),
+                "articolo":    str(row.get("ARTICOLO", row.get("ARTICOLO_grouped", "—")) or "—"),
+                "fase":        str(row.get("FASE", "—") or "—"),
+                "stato":       stato,
+                "ore_reali":   round(float(ore_reali), 2) if pd.notna(ore_reali) else None,
+                "ore_teoriche": round(float(ore_teoriche), 2) if pd.notna(ore_teoriche) else None,
+            })
+        result[data_str] = records
+    return result
+
+
 def tabella_wo_tutti(df: pd.DataFrame, n: int = 50) -> list:
     """
     Ultimi N ordini di lavoro (tutti, non solo anomalie), ordinati per data desc.
@@ -730,12 +765,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 
 <!-- RIGA 1: calendario + indice -->
-<div class="two-col">
+<div class="two-col" style="grid-template-columns: 1.20fr 1fr">
 
   <div class="card">
-    <div class="s-title">Calendario lavorazioni — storico completo</div>
+    <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.25rem">
+      <button id="calBackBtn" onclick="calShowGrid()" style="display:none;background:none;border:none;cursor:pointer;color:var(--amber);font-size:1.35rem;padding:0;line-height:1;flex-shrink:0;opacity:.85;transition:opacity .15s" title="Torna al calendario" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity='.85'">&#8592;</button>
+      <div class="s-title" style="margin-bottom:0;flex:1">Calendario lavorazioni — storico completo</div>
+    </div>
+    <div id="calHint" style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:.85rem;letter-spacing:.04em">Clicca su un quadratino per i dettagli del giorno</div>
     <div class="cal-scroll" id="calScroll"></div>
-    <div class="cal-legend">
+    <div id="calDetail" style="display:none"></div>
+    <div class="cal-legend" id="calLegend">
       <div class="cl-item"><div class="cl-box" style="background:var(--green-dim);border:1px solid var(--green)"></div>Normale</div>
       <div class="cl-item"><div class="cl-box" style="background:var(--red-dim);border:1px solid var(--red)"></div>Anomalia</div>
       <div class="cl-item"><div class="cl-box" style="background:var(--border)"></div>Nessuna prod.</div>
@@ -802,6 +842,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="s-title">Ore perse per mese (ultimi 6)</div>
     <div class="spark" id="sparkEl"></div>
     <div class="spark-labels" id="sparkLbl"></div>
+    <div id="orePerseDisplay" style="margin-top:1rem;display:flex;align-items:baseline;gap:.55rem">
+    </div>
     <div style="margin-top:1.5rem">
       <div class="s-title">Tasso anomalia per fase — <span id="faseMeseTitle" style="color:var(--amber)"></span></div>
       <div class="bar-list" id="faseBars"></div>
@@ -833,6 +875,45 @@ const FASE_DATA    = __FASE_JSON__;
 const FASE_X_MESE  = __FASE_X_MESE_JSON__;
 const SPARK        = __SPARK_JSON__;
 const FORECAST     = __FORECAST_JSON__;
+const WO_X_GIORNO  = __WO_X_GIORNO_JSON__;
+
+// ── Calendario: vista dettaglio giorno ───────────────────────────────────────
+function calShowDetail(dateStr, dateLabel) {
+  document.getElementById('calScroll').style.display  = 'none';
+  document.getElementById('calLegend').style.display  = 'none';
+  document.getElementById('calHint').style.display    = 'none';
+  document.getElementById('calBackBtn').style.display = '';
+  const detail = document.getElementById('calDetail');
+  detail.style.display = 'block';
+
+  const wos = WO_X_GIORNO[dateStr] || [];
+  let html = `<div style="font-family:var(--mono);font-size:.72rem;color:var(--amber);margin-bottom:.7rem;letter-spacing:.08em">${dateLabel}</div>`;
+  if (!wos.length) {
+    html += '<div style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">Nessuna lavorazione registrata per questo giorno.</div>';
+  } else {
+    const nAnom = wos.filter(r => r.stato !== 'NORMALE').length;
+    html += `<div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:.65rem">${wos.length} lavorazioni totali &nbsp;&middot;&nbsp; <span style="color:var(--red)">${nAnom} anomali${nAnom===1?'a':'e'}</span></div>`;
+    html += '<div style="overflow-y:auto;max-height:195px"><table class="data-table" style="font-size:.68rem"><thead><tr>';
+    html += '<th>WO</th><th>Articolo</th><th>Fase</th><th>Stato</th><th>Ore teoriche</th><th>Ore reali</th></tr></thead><tbody>';
+    wos.forEach(r => {
+      const bc    = r.stato==='ANOMALIA' ? 'b-red' : r.stato==='ATTENZIONE' ? 'b-amber' : 'b-green';
+      const oreC  = r.stato!=='NORMALE' ? 'color:var(--red)' : '';
+      const oreR  = r.ore_reali   !== null && r.ore_reali   !== undefined ? r.ore_reali   + ' h' : '—';
+      const oreT  = r.ore_teoriche !== null && r.ore_teoriche !== undefined ? r.ore_teoriche + ' h' : '—';
+      html += `<tr><td>${r.WO}</td><td>${r.articolo}</td><td>${r.fase}</td><td><span class="badge ${bc}">${r.stato}</span></td><td>${oreT}</td><td style="${oreC}">${oreR}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
+  detail.innerHTML = html;
+}
+
+function calShowGrid() {
+  document.getElementById('calScroll').style.display  = '';
+  document.getElementById('calLegend').style.display  = '';
+  document.getElementById('calHint').style.display    = '';
+  document.getElementById('calBackBtn').style.display = 'none';
+  document.getElementById('calDetail').style.display  = 'none';
+}
 
 // ── Calendario multi-mese (più recente in cima, scrollabile) ─────────────────
 (function(){
@@ -851,7 +932,13 @@ const FORECAST     = __FORECAST_JSON__;
     m.giorni.forEach(d => {
       const sq = document.createElement('div');
       sq.className = 'cal-day ' + d.stato;
-      sq.title = `${d.giorno} ${m.label} — ${d.stato === 'anomaly' ? 'ANOMALIA' : d.stato === 'normal' ? 'NORMALE' : 'nessuna produzione'}`;
+      const dateStr  = `${m.mese}-${String(d.giorno).padStart(2,'0')}`;
+      const statoLbl = d.stato==='anomaly' ? 'ANOMALIA' : d.stato==='normal' ? 'NORMALE' : 'nessuna produzione';
+      sq.title = `${d.giorno} ${m.label} — ${statoLbl}`;
+      if (d.stato !== 'empty') {
+        sq.style.cursor = 'pointer';
+        sq.addEventListener('click', () => calShowDetail(dateStr, `${d.giorno} ${m.label}`));
+      }
       grid.appendChild(sq);
     });
     wrap.appendChild(grid);
@@ -911,6 +998,16 @@ const FORECAST     = __FORECAST_JSON__;
   });
 })();
 
+// ── Mini KPI ore perse per il mese selezionato ──────────────────────────────
+function renderOrePerse(ore, label) {
+  const el = document.getElementById('orePerseDisplay');
+  if (!el) return;
+  const color = ore >= 20 ? 'var(--red)' : ore >= 8 ? 'var(--amber)' : 'var(--green)';
+  el.innerHTML = `
+    <span style="font-family:var(--mono);font-size:1.55rem;font-weight:500;color:${color};letter-spacing:-.02em;line-height:1">${ore} h</span>
+    <span style="font-family:var(--mono);font-size:.65rem;color:var(--muted);letter-spacing:.06em">perse &mdash; ${label}</span>`;
+}
+
 // ── Fase chart: render con dati di un mese specifico ─────────────────────────
 function renderFaseChart(dati, meseLabel) {
   const el    = document.getElementById('faseBars');
@@ -948,6 +1045,7 @@ function renderFaseChart(dati, meseLabel) {
   // Mostra l'ultimo mese come default nel fase chart
   const lastKey   = SPARK.keys ? SPARK.keys[SPARK.keys.length - 1] : null;
   const lastLabel = SPARK.labels[SPARK.labels.length - 1] || '';
+  renderOrePerse(SPARK.values[SPARK.values.length - 1] ?? 0, lastLabel);
   if (lastKey && FASE_X_MESE[lastKey]) renderFaseChart(FASE_X_MESE[lastKey], lastLabel);
   else renderFaseChart(FASE_DATA, 'storico');
 
@@ -966,6 +1064,7 @@ function renderFaseChart(dati, meseLabel) {
       selectedIdx = i;
       const key   = SPARK.keys ? SPARK.keys[i] : null;
       const label = SPARK.labels[i] || '';
+      renderOrePerse(SPARK.values[i] ?? 0, label);
       if (key && FASE_X_MESE[key]) renderFaseChart(FASE_X_MESE[key], label);
       else renderFaseChart(FASE_DATA, 'storico');
     });
@@ -1021,7 +1120,8 @@ def genera_html(kpi: dict, cal: list, wo: list, art: dict, fase: dict,
                 spark: dict, forecast: list, soglia: float,
                 model_name: str = "XGBoost",
                 indice_medio_globale: float = 1.0,
-                fase_x_mese: dict = None) -> str:
+                fase_x_mese: dict = None,
+                wo_x_giorno: dict = None) -> str:
 
     # Usa indice medio calcolato sull'intero dataset (passato dall'esterno)
     indice_medio = round(float(indice_medio_globale), 3)
@@ -1055,6 +1155,7 @@ def genera_html(kpi: dict, cal: list, wo: list, art: dict, fase: dict,
         "__SPARK_JSON__":        json.dumps(spark),
         "__FORECAST_JSON__":     json.dumps(forecast),
         "__FASE_X_MESE_JSON__":  json.dumps(fase_x_mese or {}),
+        "__WO_X_GIORNO_JSON__":  json.dumps(wo_x_giorno or {}),
     }
     for k, v in replacements.items():
         html = html.replace(k, v)
@@ -1092,6 +1193,7 @@ def genera_dashboard(
     spark        = sparkline_ore_perse(df)
     forecast     = forecast_mese_successivo(df)
     fase_x_mese  = fase_per_mese(df)
+    wo_x_giorno  = wo_per_giorno(df)
 
     # Indice medio su tutti i dati (non solo anomalie)
     indice_medio_globale = float(df["Indice_Inefficienza"].mean()) if "Indice_Inefficienza" in df.columns else 1.0
@@ -1099,7 +1201,8 @@ def genera_dashboard(
     print(f"[5/6] Generazione HTML ...")
     html = genera_html(kpi, cal, wo, art, fase, spark, forecast, soglia, model_name,
                        indice_medio_globale=indice_medio_globale,
-                       fase_x_mese=fase_x_mese)
+                       fase_x_mese=fase_x_mese,
+                       wo_x_giorno=wo_x_giorno)
 
     print(f"[6/6] Salvataggio in:          {path_output}")
     os.makedirs(os.path.dirname(path_output), exist_ok=True)

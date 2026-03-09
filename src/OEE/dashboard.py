@@ -62,7 +62,6 @@ def top_wo_critici(df: pd.DataFrame, n: int = 10) -> list:
     cols = [c for c in ["WO", "FASE", "ARTICOLO", "Data_Ora_Fine", "OEE", "OEE_Classe",
                         "OEE_Disponibilita", "OEE_Performance", "OEE_Qualita", "Alert_Motivo"] if c in alert.columns]
     out = alert[cols].dropna(subset=["OEE"]).sort_values("OEE").head(n).round(4).copy()
-    # convert non-JSON-serializable columns to string
     for col in ["Data_Ora_Fine", "OEE_Classe"]:
         if col in out.columns:
             out[col] = out[col].astype(str)
@@ -159,9 +158,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     padding: 24px 40px;
   }}
 
-  .kpi-row {{ grid-template-columns: repeat(4, 1fr); }}
-  .charts-row {{ grid-template-columns: 2fr 1fr; }}
-  .bottom-row {{ grid-template-columns: 1fr 1fr; }}
+  .kpi-row      {{ grid-template-columns: repeat(4, 1fr); }}
+  .charts-row   {{ grid-template-columns: 2fr 1fr; }}
+  /* WO critici: occupa tutta la riga */
+  .wo-row       {{ grid-template-columns: 1fr; }}
+  /* Articoli + Alert: affiancati sotto */
+  .bottom-row   {{ grid-template-columns: 1fr 1fr; }}
 
   .card {{
     background: var(--surface);
@@ -181,7 +183,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     height: 2px;
     background: var(--accent);
   }}
-  .kpi-card.warn::before  {{ background: var(--warn); }}
+  .kpi-card.warn::before   {{ background: var(--warn); }}
   .kpi-card.danger::before {{ background: var(--danger); }}
 
   .kpi-label {{
@@ -199,7 +201,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     line-height: 1;
     color: var(--accent);
   }}
-  .kpi-card.warn  .kpi-value  {{ color: var(--warn); }}
+  .kpi-card.warn  .kpi-value {{ color: var(--warn); }}
   .kpi-card.danger .kpi-value {{ color: var(--danger); }}
   .kpi-sub {{
     font-size: 11px;
@@ -232,6 +234,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     text-transform: uppercase;
     color: var(--muted);
     border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 1;
   }}
   td {{
     padding: 8px 10px;
@@ -250,9 +256,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     font-weight: 600;
     letter-spacing: 0.04em;
   }}
-  .badge-critico   {{ background: rgba(229,0,76,0.15);  color: var(--danger); }}
+  .badge-critico    {{ background: rgba(229,0,76,0.15);  color: var(--danger); }}
   .badge-accettabile{{ background: rgba(245,166,35,0.15); color: var(--warn); }}
-  .badge-wc        {{ background: rgba(0,229,160,0.15);  color: var(--accent); }}
+  .badge-wc         {{ background: rgba(0,229,160,0.15);  color: var(--accent); }}
 
   .oee-bar {{
     display: inline-block;
@@ -263,8 +269,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     margin-right: 6px;
     transition: width 0.3s;
   }}
-  .oee-bar.ok {{ background: var(--accent); }}
+  .oee-bar.ok  {{ background: var(--accent); }}
   .oee-bar.mid {{ background: var(--warn); }}
+
+  /* WO table scrollable, mostra almeno 4 righe */
+  .wo-table-wrap {{
+    overflow-x: auto;
+    overflow-y: auto;
+    /* header ~32px + 4 righe ~38px ≈ 184px */
+    max-height: 220px;
+    scrollbar-width: thin;
+    scrollbar-color: #1e2130 transparent;
+  }}
 
   footer {{
     padding: 16px 40px;
@@ -272,6 +288,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     font-size: 11px;
     border-top: 1px solid var(--border);
   }}
+
+  /* alert list senza frecce */
+  .alert-list {{
+    font-size: 12px;
+    line-height: 2;
+    color: #c0c4cc;
+  }}
+  .alert-list li {{
+    list-style: none;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }}
+  .alert-list li:last-child {{ border-bottom: none; }}
 </style>
 </head>
 <body>
@@ -317,15 +346,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
-<!-- ARTICOLI + ALERT TABLE -->
-<div class="grid bottom-row">
-  <div class="card">
-    <div class="card-title">Articoli con OEE più basso</div>
-    <canvas id="artChart" height="180"></canvas>
-  </div>
+<!-- WO CRITICI — riga intera -->
+<div class="grid wo-row">
   <div class="card">
     <div class="card-title">WO critici — OEE sotto soglia</div>
-    <div style="overflow-x:auto;max-height:168px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#1e2130 transparent;">
+    <div class="wo-table-wrap">
       <table>
         <thead>
           <tr>
@@ -338,22 +363,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
-<!-- ALERT SUMMARY -->
-<div class="grid" style="grid-template-columns:1fr;">
+<!-- ARTICOLI + ALERT AUTOMATICI affiancati -->
+<div class="grid bottom-row">
+  <div class="card">
+    <div class="card-title">Articoli con OEE più basso</div>
+    <canvas id="artChart" height="180"></canvas>
+  </div>
   <div class="card" style="background:#0d0f14;border-color:#1e2130;">
     <div class="card-title" style="color:#e5004c;">⚠ Alert automatici</div>
-    <div id="alertSummary" style="font-size:12px;line-height:1.8;color:#c0c4cc;"></div>
+    <ul class="alert-list" id="alertSummary"></ul>
   </div>
 </div>
 
 <footer>OEE = Disponibilità × Performance × Qualità &nbsp;|&nbsp; Ottimo ≥ 85% &nbsp;|&nbsp; Accettabile ≥ 65% &nbsp;|&nbsp; Critico &lt; 65%</footer>
 
 <script>
-const TREND = {trend_json};
-const DIST  = {dist_json};
-const ARTS  = {art_json};
+const TREND   = {trend_json};
+const DIST    = {dist_json};
+const ARTS    = {art_json};
 const CRITICI = {critici_json};
-const KPI  = {kpi_json};
+const KPI     = {kpi_json};
 
 // ── Trend Charts (mensile) ─────────────────────────────────────────────────
 if (TREND.labels && TREND.labels.length) {{
@@ -396,7 +425,6 @@ if (TREND.labels && TREND.labels.length) {{
 }}
 
 // ── Distribuzione Classi ───────────────────────────────────────────────────
-// label order from Python is always: Ottimo, Accettabile, Critico
 if (DIST.labels && DIST.labels.length) {{
   new Chart(document.getElementById('distChart'), {{
     type: 'doughnut',
@@ -454,8 +482,8 @@ CRITICI.forEach(r => {{
   </tr>`;
 }});
 
-// ── Alert summary ──────────────────────────────────────────────────────────
-const alertDiv = document.getElementById('alertSummary');
+// ── Alert summary (senza freccia) ──────────────────────────────────────────
+const alertList = document.getElementById('alertSummary');
 const msgs = [];
 if (KPI.n_critici > 0)
   msgs.push(`<b style="color:#e5004c">${{KPI.n_critici}} WO con OEE critico</b> (sotto il 65%) richiedono attenzione immediata.`);
@@ -467,7 +495,7 @@ if (KPI.qual_media < 95)
   msgs.push(`Qualità media al <b>${{KPI.qual_media}}%</b> — revisione scarti e rilavorazioni consigliata.`);
 if (msgs.length === 0)
   msgs.push('Nessun alert critico. OEE globale nei parametri accettabili.');
-alertDiv.innerHTML = msgs.map(m => '→ ' + m).join('<br>');
+alertList.innerHTML = msgs.map(m => `<li>${{m}}</li>`).join('');
 </script>
 </body>
 </html>"""

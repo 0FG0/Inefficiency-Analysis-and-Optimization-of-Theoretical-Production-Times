@@ -54,9 +54,12 @@
     padding: 24px 40px;
   }
 
-  .kpi-row { grid-template-columns: repeat(4, 1fr); }
-  .charts-row { grid-template-columns: 2fr 1fr; }
-  .bottom-row { grid-template-columns: 1fr 1fr; }
+  .kpi-row      { grid-template-columns: repeat(4, 1fr); }
+  .charts-row   { grid-template-columns: 2fr 1fr; }
+  /* WO critici: occupa tutta la riga */
+  .wo-row       { grid-template-columns: 1fr; }
+  /* Articoli + Alert: affiancati sotto */
+  .bottom-row   { grid-template-columns: 1fr 1fr; }
 
   .card {
     background: var(--surface);
@@ -76,7 +79,7 @@
     height: 2px;
     background: var(--accent);
   }
-  .kpi-card.warn::before  { background: var(--warn); }
+  .kpi-card.warn::before   { background: var(--warn); }
   .kpi-card.danger::before { background: var(--danger); }
 
   .kpi-label {
@@ -94,7 +97,7 @@
     line-height: 1;
     color: var(--accent);
   }
-  .kpi-card.warn  .kpi-value  { color: var(--warn); }
+  .kpi-card.warn  .kpi-value { color: var(--warn); }
   .kpi-card.danger .kpi-value { color: var(--danger); }
   .kpi-sub {
     font-size: 11px;
@@ -127,6 +130,10 @@
     text-transform: uppercase;
     color: var(--muted);
     border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 1;
   }
   td {
     padding: 8px 10px;
@@ -145,9 +152,9 @@
     font-weight: 600;
     letter-spacing: 0.04em;
   }
-  .badge-critico   { background: rgba(229,0,76,0.15);  color: var(--danger); }
+  .badge-critico    { background: rgba(229,0,76,0.15);  color: var(--danger); }
   .badge-accettabile{ background: rgba(245,166,35,0.15); color: var(--warn); }
-  .badge-wc        { background: rgba(0,229,160,0.15);  color: var(--accent); }
+  .badge-wc         { background: rgba(0,229,160,0.15);  color: var(--accent); }
 
   .oee-bar {
     display: inline-block;
@@ -158,8 +165,18 @@
     margin-right: 6px;
     transition: width 0.3s;
   }
-  .oee-bar.ok { background: var(--accent); }
+  .oee-bar.ok  { background: var(--accent); }
   .oee-bar.mid { background: var(--warn); }
+
+  /* WO table scrollable, mostra almeno 4 righe */
+  .wo-table-wrap {
+    overflow-x: auto;
+    overflow-y: auto;
+    /* header ~32px + 4 righe ~38px ≈ 184px */
+    max-height: 220px;
+    scrollbar-width: thin;
+    scrollbar-color: #1e2130 transparent;
+  }
 
   footer {
     padding: 16px 40px;
@@ -167,13 +184,26 @@
     font-size: 11px;
     border-top: 1px solid var(--border);
   }
+
+  /* alert list senza frecce */
+  .alert-list {
+    font-size: 12px;
+    line-height: 2;
+    color: #c0c4cc;
+  }
+  .alert-list li {
+    list-style: none;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .alert-list li:last-child { border-bottom: none; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>OEE Dashboard</h1>
-  <span>Generato il 09/03/2026 10:19 &nbsp;·&nbsp; 390 WO analizzati</span>
+  <span>Generato il 09/03/2026 12:37 &nbsp;·&nbsp; 390 WO analizzati</span>
 </header>
 
 <!-- KPI -->
@@ -212,15 +242,11 @@
   </div>
 </div>
 
-<!-- ARTICOLI + ALERT TABLE -->
-<div class="grid bottom-row">
-  <div class="card">
-    <div class="card-title">Articoli con OEE più basso</div>
-    <canvas id="artChart" height="180"></canvas>
-  </div>
+<!-- WO CRITICI — riga intera -->
+<div class="grid wo-row">
   <div class="card">
     <div class="card-title">WO critici — OEE sotto soglia</div>
-    <div style="overflow-x:auto;max-height:168px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#1e2130 transparent;">
+    <div class="wo-table-wrap">
       <table>
         <thead>
           <tr>
@@ -233,22 +259,26 @@
   </div>
 </div>
 
-<!-- ALERT SUMMARY -->
-<div class="grid" style="grid-template-columns:1fr;">
+<!-- ARTICOLI + ALERT AUTOMATICI affiancati -->
+<div class="grid bottom-row">
+  <div class="card">
+    <div class="card-title">Articoli con OEE più basso</div>
+    <canvas id="artChart" height="180"></canvas>
+  </div>
   <div class="card" style="background:#0d0f14;border-color:#1e2130;">
     <div class="card-title" style="color:#e5004c;">⚠ Alert automatici</div>
-    <div id="alertSummary" style="font-size:12px;line-height:1.8;color:#c0c4cc;"></div>
+    <ul class="alert-list" id="alertSummary"></ul>
   </div>
 </div>
 
 <footer>OEE = Disponibilità × Performance × Qualità &nbsp;|&nbsp; Ottimo ≥ 85% &nbsp;|&nbsp; Accettabile ≥ 65% &nbsp;|&nbsp; Critico &lt; 65%</footer>
 
 <script>
-const TREND = {"labels": ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"], "oee": [0.6904, 0.7461, 0.7385, 0.8413, 0.84, 0.8358, 0.767, 0.6864, 0.7557, 0.7941, 0.7322, 0.7581, 0.7687, 0.82], "disp": [0.8275, 0.8689, 0.8728, 0.9244, 0.9202, 0.9183, 0.8896, 0.8438, 0.8677, 0.876, 0.8516, 0.8576, 0.87, 0.8982], "perf": [0.8024, 0.8435, 0.8302, 0.905, 0.9044, 0.902, 0.8469, 0.7992, 0.8558, 0.8827, 0.8473, 0.8613, 0.8679, 0.9041], "qual": [0.9998, 0.9923, 0.9829, 0.9909, 0.9962, 0.9983, 0.9981, 0.9917, 0.9973, 0.9992, 0.9942, 0.9971, 0.99, 0.9961]};
-const DIST  = {"labels": ["Ottimo", "Accettabile", "Critico"], "values": [185, 109, 96]};
-const ARTS  = {"labels": [1202604281.0, 1205460261.0, 1089920151.0, 1089930891.0, 1089930841.0, 1089980611.0, 1089952491.0, 1089995351.0, 1204480121.0, 1089956421.0, 1204000181.0, 1200100161.0, 1200300101.0, 1205042111.0, 1200100131.0], "values": [0.2206, 0.2311, 0.262, 0.2793, 0.2882, 0.2944, 0.3059, 0.3165, 0.3227, 0.3272, 0.3337, 0.3714, 0.379, 0.3794, 0.394]};
+const TREND   = {"labels": ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"], "oee": [0.6904, 0.7461, 0.7385, 0.8413, 0.84, 0.8358, 0.767, 0.6864, 0.7557, 0.7941, 0.7322, 0.7581, 0.7687, 0.82], "disp": [0.8275, 0.8689, 0.8728, 0.9244, 0.9202, 0.9183, 0.8896, 0.8438, 0.8677, 0.876, 0.8516, 0.8576, 0.87, 0.8982], "perf": [0.8024, 0.8435, 0.8302, 0.905, 0.9044, 0.902, 0.8469, 0.7992, 0.8558, 0.8827, 0.8473, 0.8613, 0.8679, 0.9041], "qual": [0.9998, 0.9923, 0.9829, 0.9909, 0.9962, 0.9983, 0.9981, 0.9917, 0.9973, 0.9992, 0.9942, 0.9971, 0.99, 0.9961]};
+const DIST    = {"labels": ["Ottimo", "Accettabile", "Critico"], "values": [185, 109, 96]};
+const ARTS    = {"labels": [1202604281.0, 1205460261.0, 1089920151.0, 1089930891.0, 1089930841.0, 1089980611.0, 1089952491.0, 1089995351.0, 1204480121.0, 1089956421.0, 1204000181.0, 1200100161.0, 1200300101.0, 1205042111.0, 1200100131.0], "values": [0.2206, 0.2311, 0.262, 0.2793, 0.2882, 0.2944, 0.3059, 0.3165, 0.3227, 0.3272, 0.3337, 0.3714, 0.379, 0.3794, 0.394]};
 const CRITICI = [{"WO": 24016934, "FASE": 28044, "ARTICOLO": 1202604281.0, "Data_Ora_Fine": "2025-05-12 20:45:12", "OEE": 0.2206, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.4672, "OEE_Performance": 0.5218, "OEE_Qualita": 0.9048, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA QUALITA_BASSA"}, {"WO": 24028369, "FASE": 22044, "ARTICOLO": 1200100131.0, "Data_Ora_Fine": "2025-01-27 19:19:37", "OEE": 0.2233, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.4855, "OEE_Performance": 0.46, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25006077, "FASE": 24044, "ARTICOLO": 1205460261.0, "Data_Ora_Fine": "2025-04-10 08:52:46", "OEE": 0.2311, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5187, "OEE_Performance": 0.4455, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 24026956, "FASE": 22044, "ARTICOLO": 1089930891.0, "Data_Ora_Fine": "2025-02-20 11:24:19", "OEE": 0.244, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.4689, "OEE_Performance": 0.5204, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25018200, "FASE": 24044, "ARTICOLO": 1207300111.0, "Data_Ora_Fine": "2025-12-16 15:30:59", "OEE": 0.2472, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5443, "OEE_Performance": 0.4542, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 24029231, "FASE": 22044, "ARTICOLO": 1204600161.0, "Data_Ora_Fine": "2025-03-27 21:46:46", "OEE": 0.2505, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.6654, "OEE_Performance": 0.5758, "OEE_Qualita": 0.6538, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA QUALITA_BASSA"}, {"WO": 25029089, "FASE": 14019, "ARTICOLO": 1083003421.0, "Data_Ora_Fine": "2026-01-27 22:01:56", "OEE": 0.2529, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5342, "OEE_Performance": 0.4734, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25014329, "FASE": 16017, "ARTICOLO": 1089920151.0, "Data_Ora_Fine": "2025-07-24 00:07:10", "OEE": 0.262, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5227, "OEE_Performance": 0.5011, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25019656, "FASE": 26044, "ARTICOLO": 1205042111.0, "Data_Ora_Fine": "2025-11-17 08:41:50", "OEE": 0.2674, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5326, "OEE_Performance": 0.5021, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25013236, "FASE": 22044, "ARTICOLO": 1204600161.0, "Data_Ora_Fine": "2025-10-27 22:59:34", "OEE": 0.2736, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5322, "OEE_Performance": 0.5141, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}];
-const KPI  = {"oee_medio": 77.6, "disp_media": 88.2, "perf_media": 86.5, "qual_media": 99.5, "n_critici": 96, "n_wc": 185, "totale_wo": 390, "generato_il": "09/03/2026 10:19"};
+const KPI     = {"oee_medio": 77.6, "disp_media": 88.2, "perf_media": 86.5, "qual_media": 99.5, "n_critici": 96, "n_wc": 185, "totale_wo": 390, "generato_il": "09/03/2026 12:37"};
 
 // ── Trend Charts (mensile) ─────────────────────────────────────────────────
 if (TREND.labels && TREND.labels.length) {
@@ -291,7 +321,6 @@ if (TREND.labels && TREND.labels.length) {
 }
 
 // ── Distribuzione Classi ───────────────────────────────────────────────────
-// label order from Python is always: Ottimo, Accettabile, Critico
 if (DIST.labels && DIST.labels.length) {
   new Chart(document.getElementById('distChart'), {
     type: 'doughnut',
@@ -349,8 +378,8 @@ CRITICI.forEach(r => {
   </tr>`;
 });
 
-// ── Alert summary ──────────────────────────────────────────────────────────
-const alertDiv = document.getElementById('alertSummary');
+// ── Alert summary (senza freccia) ──────────────────────────────────────────
+const alertList = document.getElementById('alertSummary');
 const msgs = [];
 if (KPI.n_critici > 0)
   msgs.push(`<b style="color:#e5004c">${KPI.n_critici} WO con OEE critico</b> (sotto il 65%) richiedono attenzione immediata.`);
@@ -362,7 +391,7 @@ if (KPI.qual_media < 95)
   msgs.push(`Qualità media al <b>${KPI.qual_media}%</b> — revisione scarti e rilavorazioni consigliata.`);
 if (msgs.length === 0)
   msgs.push('Nessun alert critico. OEE globale nei parametri accettabili.');
-alertDiv.innerHTML = msgs.map(m => '→ ' + m).join('<br>');
+alertList.innerHTML = msgs.map(m => `<li>${m}</li>`).join('');
 </script>
 </body>
 </html>
