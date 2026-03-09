@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import joblib
 import warnings
 import os
+import sys
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold, TimeSeriesSplit, cross_val_score
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
@@ -13,11 +14,18 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from xgboost import XGBRegressor
+
+# Ensure imports work when this file is executed directly from src/regression.
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.dirname(CURRENT_DIR)
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
 from feature_engineering import pipeline_tempo
 warnings.filterwarnings("ignore")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
+BASE_DIR = CURRENT_DIR
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
 DATA_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "koepfer_160_2.csv")
 OUTPUT_PLOT_PATH = os.path.join(PROJECT_ROOT, "outputs", "times_compared_scatter.png")
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "best_regressione_time.pkl")

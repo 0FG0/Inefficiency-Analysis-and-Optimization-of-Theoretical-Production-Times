@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import sys
 import joblib
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.model_selection import KFold, TimeSeriesSplit, cross_val_score
@@ -12,10 +13,17 @@ from xgboost import XGBRegressor
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+
+# Ensure imports work when this file is executed directly from src/regression.
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.dirname(CURRENT_DIR)
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
 from feature_engineering import pipeline_inefficienza
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
+BASE_DIR = CURRENT_DIR
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
 DATA_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "koepfer_160_2.csv")
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "best_regressione_inefficienza.pkl")
 PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "parametri_preprocessing_regressione_inefficienza.pkl")

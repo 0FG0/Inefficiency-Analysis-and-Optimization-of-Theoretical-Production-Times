@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anomaly Dashboard — Koepfer 160</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #0c0e10;
+    --surface:   #13171c;
+    --border:    #1f2730;
+    --border2:   #2a3442;
+    --text:      #e2e8f0;
+    --muted:     #5a6880;
+    --amber:     #f59e0b;
+    --amber-dim: #7c4f06;
+    --red:       #ef4444;
+    --red-dim:   #7f1d1d;
+    --green:     #22c55e;
+    --green-dim: #14532d;
+    --blue:      #38bdf8;
+    --blue-dim:  #0c4a6e;
+    --mono:      'DM Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+    --radius:    12px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* noise */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    opacity: .6;
+  }
+
+  main { position: relative; z-index: 1; max-width: 1360px; margin: 0 auto; padding: 0 2.5rem 4rem; }
+
+  /* ── HEADER ─────────────────────────────────────────────────────────────── */
+  header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 2.5rem 0 1.75rem; border-bottom: 1px solid var(--border);
+    margin-bottom: 2.5rem; gap: 1rem; flex-wrap: wrap;
+  }
+  .h-eyebrow {
+    font-family: var(--mono); font-size: .68rem; letter-spacing: .16em;
+    color: var(--amber); text-transform: uppercase; margin-bottom: .5rem;
+  }
+  header h1 {
+    font-size: 2rem; font-weight: 800; letter-spacing: -.02em; line-height: 1;
+  }
+  header h1 em { color: var(--amber); font-style: normal; }
+  .h-right { text-align: right; }
+  .h-right .gen {
+    font-family: var(--mono); font-size: .7rem; color: var(--muted);
+  }
+  .h-badge {
+    display: inline-flex; align-items: center; gap: .4rem; margin-top: .5rem;
+    background: var(--green-dim); border: 1px solid var(--green);
+    color: var(--green); font-family: var(--mono); font-size: .68rem;
+    padding: .28rem .7rem; border-radius: 999px; letter-spacing: .08em;
+  }
+  .h-badge .dot {
+    width: 6px; height: 6px; background: var(--green); border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  /* ── SECTION TITLE ───────────────────────────────────────────────────────── */
+  .s-title {
+    font-family: var(--mono); font-size: .65rem; letter-spacing: .18em;
+    color: var(--muted); text-transform: uppercase;
+    display: flex; align-items: center; gap: .75rem; margin-bottom: 1.25rem;
+  }
+  .s-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ── KPI GRID ────────────────────────────────────────────────────────────── */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px; background: var(--border);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; margin-bottom: 2.5rem;
+  }
+  .kpi-card {
+    background: var(--surface); padding: 1.5rem 1.25rem;
+    position: relative; overflow: hidden; transition: background .18s;
+  }
+  .kpi-card:hover { background: #181e26; }
+  .kpi-card::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .kpi-card.c-amber::after { background: var(--amber); }
+  .kpi-card.c-red::after   { background: var(--red); }
+  .kpi-card.c-green::after { background: var(--green); }
+  .kpi-card.c-blue::after  { background: var(--blue); }
+
+  .kpi-lbl {
+    font-family: var(--mono); font-size: .975rem; letter-spacing: .06em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: .55rem;
+  }
+  .kpi-val {
+    font-family: var(--sans); font-size: 2.6rem; font-weight: 800;
+    line-height: 1; letter-spacing: -.03em;
+  }
+  .c-amber .kpi-val { color: var(--amber); }
+  .c-red   .kpi-val { color: var(--red); }
+  .c-green .kpi-val { color: var(--green); }
+  .c-blue  .kpi-val { color: var(--blue); }
+
+  .kpi-sub { font-family: var(--mono); font-size: 1.02rem; color: var(--muted); margin-top: .45rem; }
+  .kpi-delta {
+    display: inline-flex; align-items: center; gap: .18rem;
+    font-family: var(--mono); font-size: .975rem; margin-top: .35rem;
+  }
+  .kpi-delta.up   { color: var(--red); }
+  .kpi-delta.down { color: var(--green); }
+  .kpi-delta.neutral { color: var(--muted); }
+
+  /* ── LAYOUT GRID ─────────────────────────────────────────────────────────── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+  @media(max-width: 840px) { .two-col { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.5rem;
+    animation: fadeUp .45s ease both;
+  }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+
+  /* ── CALENDAR ────────────────────────────────────────────────────────────── */
+  .cal-scroll {
+    height: 260px; overflow-y: auto; overflow-x: hidden;
+    padding-right: 4px;
+    scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
+  }
+  .cal-month { margin-bottom: .9rem; }
+  .cal-month:last-child { margin-bottom: 0; }
+  .cal-month-label {
+    font-family: var(--mono); font-size: .6rem; letter-spacing: .12em;
+    color: var(--amber); text-transform: uppercase;
+    margin-bottom: .35rem;
+  }
+  .cal-grid { display: flex; gap: 3px; flex-wrap: wrap; }
+  .cal-day {
+    width: 15px; height: 15px; border-radius: 3px; cursor: default;
+    flex-shrink: 0; transition: transform .12s;
+  }
+  .cal-day:hover { transform: scale(1.45); z-index: 10; position: relative; }
+  .cal-day.normal  { background: var(--green-dim); border: 1px solid var(--green); }
+  .cal-day.anomaly { background: var(--red-dim);   border: 1px solid var(--red); }
+  .cal-day.empty   { background: var(--border); }
+
+  .cal-legend { display: flex; gap: 1.2rem; margin-top: .75rem; }
+  .cl-item { display: flex; align-items: center; gap: .38rem; font-family: var(--mono); font-size: .65rem; color: var(--muted); }
+  .cl-box  { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── BAR CHART CUSTOM ────────────────────────────────────────────────────── */
+  .bar-list { display: flex; flex-direction: column; gap: .7rem; }
+  .bar-row  { display: flex; align-items: center; gap: .7rem; }
+  .bar-lbl  { font-family: var(--mono); font-size: .68rem; color: var(--muted); width: 86px; flex-shrink: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; background: var(--border); border-radius: 4px; height: 20px; overflow: hidden; }
+  .bar-fill  { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: .45rem; font-family: var(--mono); font-size: .65rem; color: #0c0e10; font-weight: 500; transition: width 1.1s cubic-bezier(.22,1,.36,1); }
+  .bar-fill.c-red    { background: var(--red); }
+  .bar-fill.c-amber  { background: var(--amber); }
+  .bar-fill.c-green  { background: var(--green); }
+  .bar-pct { font-family: var(--mono); font-size: .65rem; color: var(--muted); width: 34px; text-align: right; flex-shrink: 0; }
+
+  /* ── SPARKLINE ───────────────────────────────────────────────────────────── */
+  .spark { display: flex; align-items: flex-end; gap: 4px; height: 56px; }
+  .spark-bar { flex: 1; background: var(--amber-dim); border-radius: 3px 3px 0 0; transition: background .2s; cursor: pointer; }
+  .spark-bar.last, .spark-bar.selected { background: var(--amber); }
+  .spark-bar:hover { background: var(--amber); opacity: .85; }
+  .spark-labels { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .62rem; color: var(--muted); margin-top: .35rem; }
+  .spark-mese-title { font-family: var(--mono); font-size: .65rem; color: var(--amber); margin-top: .5rem; letter-spacing: .1em; }
+
+  /* ── TABLE ───────────────────────────────────────────────────────────────── */
+  .data-table { width: 100%; border-collapse: collapse; font-size: .72rem; }
+  .data-table th {
+    font-family: var(--mono); font-size: .6rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); font-weight: 400;
+    padding: .55rem .7rem; border-bottom: 1px solid var(--border); text-align: left;
+  }
+  .data-table td {
+    font-family: var(--mono); padding: .6rem .7rem;
+    border-bottom: 1px solid var(--border2); vertical-align: middle;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #181e26; }
+
+  .badge {
+    display: inline-block; padding: .12rem .5rem; border-radius: 4px;
+    font-family: var(--mono); font-size: .58rem; letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .badge.b-red   { background: var(--red-dim);   color: var(--red);   border: 1px solid var(--red); }
+  .badge.b-amber { background: var(--amber-dim); color: var(--amber); border: 1px solid var(--amber); }
+  .badge.b-green { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+
+  /* ── FORECAST GRID ───────────────────────────────────────────────────────── */
+  .forecast-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 1rem; }
+  .fc-item {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem 1rem .9rem;
+  }
+  .fc-art  { font-weight: 700; font-size: .88rem; margin-bottom: .15rem; letter-spacing: -.01em; }
+  .fc-fase { font-family: var(--mono); font-size: .65rem; color: var(--muted); margin-bottom: .55rem; }
+  .fc-bar  { background: var(--border); border-radius: 3px; height: 5px; margin-bottom: .4rem; overflow: hidden; }
+  .fc-fill { height: 100%; border-radius: 3px; }
+  .fc-txt  { font-family: var(--mono); font-size: .65rem; color: var(--muted); }
+  .fc-txt strong { color: inherit; }
+
+  .risk-high   .fc-fill { background: var(--red); }
+  .risk-medium .fc-fill { background: var(--amber); }
+  .risk-low    .fc-fill { background: var(--green); }
+  .risk-high   .fc-art  { color: var(--red); }
+  .risk-medium .fc-art  { color: var(--amber); }
+  .risk-low    .fc-art  { color: var(--green); }
+
+  /* ── NOTE ────────────────────────────────────────────────────────────────── */
+  .note {
+    font-family: var(--mono); font-size: .68rem; color: var(--muted);
+    margin-top: 1rem; padding: .7rem .9rem;
+    background: var(--bg); border-left: 3px solid var(--amber);
+    border-radius: 0 4px 4px 0; line-height: 1.6;
+  }
+
+  /* ── GAUGE ───────────────────────────────────────────────────────────────── */
+  .gauge-wrap { display: flex; justify-content: center; margin: .5rem 0 .75rem; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  .full-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.5rem; margin-bottom: 2rem;
+    animation: fadeUp .45s ease both;
+  }
+  .overflow-table { overflow-x: auto; overflow-y: auto; max-height: 330px; }
+  .overflow-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 2; }
+</style>
+</head>
+<body>
+<main>
+
+<!-- HEADER -->
+<header>
+  <div>
+    <div class="h-eyebrow">Monitor Produzione — Analisi Predittiva</div>
+    <h1>Koepfer 160 <em>/ Anomalie</em></h1>
+  </div>
+  <div class="h-right">
+    <div class="gen">Generato il 09/03/2026 12:19 &nbsp;·&nbsp; 387 lavorazioni analizzate</div>
+    <div class="h-badge"><span class="dot"></span> Modello attivo</div>
+  </div>
+</header>
+
+<!-- KPI -->
+<div class="s-title">Riepilogo </div>
+<div class="kpi-grid">
+  <div class="kpi-card c-red">
+    <div class="kpi-lbl">Anomalie rilevate</div>
+    <div class="kpi-val">57</div>
+    <div class="kpi-sub">su 387 lavorazioni</div>
+    <div class="kpi-delta up">▲ -1 vs 2026-01</div>
+  </div>
+  <div class="kpi-card c-amber">
+    <div class="kpi-lbl">Tasso anomalia</div>
+    <div class="kpi-val">14.7%</div>
+    <div class="kpi-sub">soglia critica: 20%</div>
+  </div>
+  <div class="kpi-card c-amber">
+    <div class="kpi-lbl">Ore perse</div>
+    <div class="kpi-val">86.1 h</div>
+    <div class="kpi-sub">tempo reale − teorico (anomalie)</div>
+  </div>
+  <div class="kpi-card c-green">
+    <div class="kpi-lbl">Lavorazioni normali</div>
+    <div class="kpi-val">330</div>
+    <div class="kpi-sub">85.3% del totale</div>
+  </div>
+</div>
+
+<!-- RIGA 1: calendario + indice -->
+<div class="two-col">
+
+  <div class="card">
+    <div class="s-title">Calendario lavorazioni — storico completo</div>
+    <div class="cal-scroll" id="calScroll"></div>
+    <div class="cal-legend">
+      <div class="cl-item"><div class="cl-box" style="background:var(--green-dim);border:1px solid var(--green)"></div>Normale</div>
+      <div class="cl-item"><div class="cl-box" style="background:var(--red-dim);border:1px solid var(--red)"></div>Anomalia</div>
+      <div class="cl-item"><div class="cl-box" style="background:var(--border)"></div>Nessuna prod.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="s-title">Indice medio inefficienza</div>
+    <div style="text-align:right;margin-top:-.6rem;margin-bottom:.9rem;font-family:var(--mono);font-size:.78rem;color:var(--muted);line-height:1.9">
+      <div><span style="color:var(--text);font-weight:500">1.0</span> &nbsp;Tempo Reale = Tempo Teorico</div>
+      <div><span style="color:var(--text);font-weight:500">2.0</span> &nbsp;Tempo Reale = 2× Tempo Teorico</div>
+    </div>
+    <div class="gauge-wrap">
+      <svg width="320" height="188" viewBox="0 0 230 135">
+        <defs>
+          <linearGradient id="gArc" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#22c55e"/>
+            <stop offset="60%"  stop-color="#f59e0b"/>
+            <stop offset="100%" stop-color="#ef4444"/>
+          </linearGradient>
+        </defs>
+        <path d="M 25 115 A 90 90 0 0 1 205 115" fill="none" stroke="#1f2730"     stroke-width="13" stroke-linecap="round"/>
+        <path d="M 25 115 A 90 90 0 0 1 205 115" fill="none" stroke="url(#gArc)" stroke-width="13" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="30" opacity=".65"/>
+        <line id="needle" x1="115" y1="115" x2="115" y2="34" stroke="var(--amber)" stroke-width="2.5" stroke-linecap="round" transform="rotate(-56, 115, 115)"/>
+        <circle cx="115" cy="115" r="5" fill="var(--amber)"/>
+        <text x="18"  y="131" fill="#5a6880" font-size="9.5"  font-family="DM Mono, monospace">1.0</text>
+        <text x="198" y="131" fill="#5a6880" font-size="9.5"  font-family="DM Mono, monospace">2.0</text>
+      </svg>
+    </div>
+    <div style="text-align:center;margin-top:-.25rem">
+      <div style="font-family:var(--mono);font-size:2.4rem;font-weight:500;color:#e2e8f0;letter-spacing:-.02em;line-height:1">1.184</div>
+      <div style="font-family:var(--mono);font-size:.8rem;color:#5a6880;letter-spacing:.05em;margin-top:.3rem">indice medio</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TABELLA WO ANOMALI -->
+<div class="s-title">Ordini di lavoro anomali (ultimi rilevati)</div>
+<div class="full-card">
+  <div class="overflow-table">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>WO</th><th>Articolo</th><th>Fase</th><th>C.d.L.</th>
+          <th>Data fine</th><th>Ore teoriche</th><th>Ore reali</th>
+          <th>Indice</th><th>Stato</th><th>Confidenza</th>
+        </tr>
+      </thead>
+      <tbody id="woTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- RIGA 2: articoli + sparkline/fase -->
+<div class="two-col">
+
+  <div class="card">
+    <div class="s-title">Tasso anomalia per articolo</div>
+    <div class="bar-list" id="artBars"></div>
+  </div>
+
+  <div class="card">
+    <div class="s-title">Ore perse per mese (ultimi 6)</div>
+    <div class="spark" id="sparkEl"></div>
+    <div class="spark-labels" id="sparkLbl"></div>
+    <div style="margin-top:1.5rem">
+      <div class="s-title">Tasso anomalia per fase — <span id="faseMeseTitle" style="color:var(--amber)"></span></div>
+      <div class="bar-list" id="faseBars"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- FORECAST -->
+<div class="s-title">Previsione rischio — mese successivo</div>
+<div class="full-card">
+  <div class="forecast-grid" id="forecastGrid"></div>
+  <div class="note">
+    <strong style="color:var(--amber)">Come funziona questa previsione:</strong><br>
+    Il modello ha già assegnato una probabilità di anomalia (0–100%) ad ogni lavorazione storica.<br>
+    Per ogni combinazione <em>Articolo + Fase</em> presente nell'ultimo mese del dataset, viene calcolata la <strong>media di queste probabilità</strong>.<br>
+    Il risultato risponde alla domanda: <em>"Se il mese prossimo la macchina produce gli stessi articoli nelle stesse fasi, qual è la probabilità attesa di anomalia?"</em><br>
+    Le combinazioni con probabilità ≥ 60% sono in rosso (alta priorità), 35–59% in arancione, &lt; 35% in verde.
+    Questa stima si basa sull'assunzione che il piano produttivo del mese successivo sia simile all'ultimo mese registrato.
+  </div>
+</div>
+
+</main>
+<script>
+const CAL          = [{"mese": "2026-02", "label": "Feb 2026", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "anomaly"}, {"giorno": 3, "stato": "empty"}, {"giorno": 4, "stato": "normal"}, {"giorno": 5, "stato": "empty"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "empty"}, {"giorno": 8, "stato": "empty"}, {"giorno": 9, "stato": "normal"}, {"giorno": 10, "stato": "normal"}, {"giorno": 11, "stato": "normal"}, {"giorno": 12, "stato": "empty"}, {"giorno": 13, "stato": "empty"}, {"giorno": 14, "stato": "empty"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "empty"}, {"giorno": 17, "stato": "normal"}, {"giorno": 18, "stato": "normal"}, {"giorno": 19, "stato": "normal"}, {"giorno": 20, "stato": "normal"}, {"giorno": 21, "stato": "empty"}, {"giorno": 22, "stato": "empty"}, {"giorno": 23, "stato": "normal"}, {"giorno": 24, "stato": "empty"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "empty"}, {"giorno": 27, "stato": "empty"}, {"giorno": 28, "stato": "empty"}]}, {"mese": "2026-01", "label": "Gen 2026", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "empty"}, {"giorno": 4, "stato": "empty"}, {"giorno": 5, "stato": "empty"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "normal"}, {"giorno": 8, "stato": "normal"}, {"giorno": 9, "stato": "empty"}, {"giorno": 10, "stato": "empty"}, {"giorno": 11, "stato": "empty"}, {"giorno": 12, "stato": "normal"}, {"giorno": 13, "stato": "empty"}, {"giorno": 14, "stato": "normal"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "normal"}, {"giorno": 17, "stato": "empty"}, {"giorno": 18, "stato": "empty"}, {"giorno": 19, "stato": "anomaly"}, {"giorno": 20, "stato": "normal"}, {"giorno": 21, "stato": "normal"}, {"giorno": 22, "stato": "normal"}, {"giorno": 23, "stato": "empty"}, {"giorno": 24, "stato": "empty"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "normal"}, {"giorno": 27, "stato": "anomaly"}, {"giorno": 28, "stato": "empty"}, {"giorno": 29, "stato": "empty"}, {"giorno": 30, "stato": "normal"}, {"giorno": 31, "stato": "empty"}]}, {"mese": "2025-12", "label": "Dic 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "normal"}, {"giorno": 3, "stato": "normal"}, {"giorno": 4, "stato": "normal"}, {"giorno": 5, "stato": "anomaly"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "empty"}, {"giorno": 8, "stato": "empty"}, {"giorno": 9, "stato": "normal"}, {"giorno": 10, "stato": "normal"}, {"giorno": 11, "stato": "empty"}, {"giorno": 12, "stato": "empty"}, {"giorno": 13, "stato": "empty"}, {"giorno": 14, "stato": "empty"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "anomaly"}, {"giorno": 17, "stato": "normal"}, {"giorno": 18, "stato": "normal"}, {"giorno": 19, "stato": "anomaly"}, {"giorno": 20, "stato": "empty"}, {"giorno": 21, "stato": "empty"}, {"giorno": 22, "stato": "normal"}, {"giorno": 23, "stato": "empty"}, {"giorno": 24, "stato": "empty"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "empty"}, {"giorno": 27, "stato": "empty"}, {"giorno": 28, "stato": "empty"}, {"giorno": 29, "stato": "empty"}, {"giorno": 30, "stato": "empty"}, {"giorno": 31, "stato": "empty"}]}, {"mese": "2025-11", "label": "Nov 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "normal"}, {"giorno": 4, "stato": "normal"}, {"giorno": 5, "stato": "anomaly"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "anomaly"}, {"giorno": 8, "stato": "empty"}, {"giorno": 9, "stato": "empty"}, {"giorno": 10, "stato": "normal"}, {"giorno": 11, "stato": "anomaly"}, {"giorno": 12, "stato": "normal"}, {"giorno": 13, "stato": "normal"}, {"giorno": 14, "stato": "empty"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "empty"}, {"giorno": 17, "stato": "anomaly"}, {"giorno": 18, "stato": "empty"}, {"giorno": 19, "stato": "normal"}, {"giorno": 20, "stato": "normal"}, {"giorno": 21, "stato": "normal"}, {"giorno": 22, "stato": "empty"}, {"giorno": 23, "stato": "empty"}, {"giorno": 24, "stato": "anomaly"}, {"giorno": 25, "stato": "anomaly"}, {"giorno": 26, "stato": "normal"}, {"giorno": 27, "stato": "normal"}, {"giorno": 28, "stato": "normal"}, {"giorno": 29, "stato": "empty"}, {"giorno": 30, "stato": "empty"}]}, {"mese": "2025-10", "label": "Ott 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "anomaly"}, {"giorno": 3, "stato": "normal"}, {"giorno": 4, "stato": "empty"}, {"giorno": 5, "stato": "empty"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "normal"}, {"giorno": 8, "stato": "normal"}, {"giorno": 9, "stato": "normal"}, {"giorno": 10, "stato": "anomaly"}, {"giorno": 11, "stato": "empty"}, {"giorno": 12, "stato": "empty"}, {"giorno": 13, "stato": "normal"}, {"giorno": 14, "stato": "normal"}, {"giorno": 15, "stato": "normal"}, {"giorno": 16, "stato": "anomaly"}, {"giorno": 17, "stato": "empty"}, {"giorno": 18, "stato": "empty"}, {"giorno": 19, "stato": "empty"}, {"giorno": 20, "stato": "anomaly"}, {"giorno": 21, "stato": "normal"}, {"giorno": 22, "stato": "empty"}, {"giorno": 23, "stato": "empty"}, {"giorno": 24, "stato": "empty"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "empty"}, {"giorno": 27, "stato": "anomaly"}, {"giorno": 28, "stato": "normal"}, {"giorno": 29, "stato": "normal"}, {"giorno": 30, "stato": "normal"}, {"giorno": 31, "stato": "normal"}]}, {"mese": "2025-09", "label": "Set 2025", "giorni": [{"giorno": 1, "stato": "anomaly"}, {"giorno": 2, "stato": "normal"}, {"giorno": 3, "stato": "anomaly"}, {"giorno": 4, "stato": "anomaly"}, {"giorno": 5, "stato": "anomaly"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "empty"}, {"giorno": 8, "stato": "anomaly"}, {"giorno": 9, "stato": "empty"}, {"giorno": 10, "stato": "normal"}, {"giorno": 11, "stato": "normal"}, {"giorno": 12, "stato": "normal"}, {"giorno": 13, "stato": "empty"}, {"giorno": 14, "stato": "empty"}, {"giorno": 15, "stato": "anomaly"}, {"giorno": 16, "stato": "normal"}, {"giorno": 17, "stato": "normal"}, {"giorno": 18, "stato": "anomaly"}, {"giorno": 19, "stato": "normal"}, {"giorno": 20, "stato": "empty"}, {"giorno": 21, "stato": "empty"}, {"giorno": 22, "stato": "normal"}, {"giorno": 23, "stato": "normal"}, {"giorno": 24, "stato": "empty"}, {"giorno": 25, "stato": "normal"}, {"giorno": 26, "stato": "empty"}, {"giorno": 27, "stato": "empty"}, {"giorno": 28, "stato": "empty"}, {"giorno": 29, "stato": "empty"}, {"giorno": 30, "stato": "empty"}]}, {"mese": "2025-08", "label": "Ago 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "empty"}, {"giorno": 4, "stato": "empty"}, {"giorno": 5, "stato": "empty"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "empty"}, {"giorno": 8, "stato": "empty"}, {"giorno": 9, "stato": "empty"}, {"giorno": 10, "stato": "empty"}, {"giorno": 11, "stato": "empty"}, {"giorno": 12, "stato": "empty"}, {"giorno": 13, "stato": "empty"}, {"giorno": 14, "stato": "empty"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "empty"}, {"giorno": 17, "stato": "empty"}, {"giorno": 18, "stato": "empty"}, {"giorno": 19, "stato": "empty"}, {"giorno": 20, "stato": "empty"}, {"giorno": 21, "stato": "empty"}, {"giorno": 22, "stato": "empty"}, {"giorno": 23, "stato": "empty"}, {"giorno": 24, "stato": "empty"}, {"giorno": 25, "stato": "normal"}, {"giorno": 26, "stato": "normal"}, {"giorno": 27, "stato": "anomaly"}, {"giorno": 28, "stato": "normal"}, {"giorno": 29, "stato": "anomaly"}, {"giorno": 30, "stato": "empty"}, {"giorno": 31, "stato": "empty"}]}, {"mese": "2025-07", "label": "Lug 2025", "giorni": [{"giorno": 1, "stato": "normal"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "normal"}, {"giorno": 4, "stato": "empty"}, {"giorno": 5, "stato": "empty"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "anomaly"}, {"giorno": 8, "stato": "normal"}, {"giorno": 9, "stato": "empty"}, {"giorno": 10, "stato": "anomaly"}, {"giorno": 11, "stato": "anomaly"}, {"giorno": 12, "stato": "empty"}, {"giorno": 13, "stato": "empty"}, {"giorno": 14, "stato": "normal"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "normal"}, {"giorno": 17, "stato": "normal"}, {"giorno": 18, "stato": "empty"}, {"giorno": 19, "stato": "empty"}, {"giorno": 20, "stato": "empty"}, {"giorno": 21, "stato": "anomaly"}, {"giorno": 22, "stato": "normal"}, {"giorno": 23, "stato": "normal"}, {"giorno": 24, "stato": "anomaly"}, {"giorno": 25, "stato": "normal"}, {"giorno": 26, "stato": "empty"}, {"giorno": 27, "stato": "empty"}, {"giorno": 28, "stato": "normal"}, {"giorno": 29, "stato": "empty"}, {"giorno": 30, "stato": "anomaly"}, {"giorno": 31, "stato": "empty"}]}, {"mese": "2025-06", "label": "Giu 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "empty"}, {"giorno": 4, "stato": "anomaly"}, {"giorno": 5, "stato": "normal"}, {"giorno": 6, "stato": "normal"}, {"giorno": 7, "stato": "empty"}, {"giorno": 8, "stato": "empty"}, {"giorno": 9, "stato": "normal"}, {"giorno": 10, "stato": "normal"}, {"giorno": 11, "stato": "normal"}, {"giorno": 12, "stato": "normal"}, {"giorno": 13, "stato": "normal"}, {"giorno": 14, "stato": "empty"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "empty"}, {"giorno": 17, "stato": "normal"}, {"giorno": 18, "stato": "normal"}, {"giorno": 19, "stato": "normal"}, {"giorno": 20, "stato": "normal"}, {"giorno": 21, "stato": "empty"}, {"giorno": 22, "stato": "empty"}, {"giorno": 23, "stato": "normal"}, {"giorno": 24, "stato": "normal"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "normal"}, {"giorno": 27, "stato": "anomaly"}, {"giorno": 28, "stato": "empty"}, {"giorno": 29, "stato": "empty"}, {"giorno": 30, "stato": "normal"}]}, {"mese": "2025-05", "label": "Mag 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "empty"}, {"giorno": 4, "stato": "empty"}, {"giorno": 5, "stato": "anomaly"}, {"giorno": 6, "stato": "normal"}, {"giorno": 7, "stato": "normal"}, {"giorno": 8, "stato": "normal"}, {"giorno": 9, "stato": "normal"}, {"giorno": 10, "stato": "empty"}, {"giorno": 11, "stato": "empty"}, {"giorno": 12, "stato": "anomaly"}, {"giorno": 13, "stato": "normal"}, {"giorno": 14, "stato": "normal"}, {"giorno": 15, "stato": "normal"}, {"giorno": 16, "stato": "normal"}, {"giorno": 17, "stato": "empty"}, {"giorno": 18, "stato": "empty"}, {"giorno": 19, "stato": "normal"}, {"giorno": 20, "stato": "normal"}, {"giorno": 21, "stato": "normal"}, {"giorno": 22, "stato": "normal"}, {"giorno": 23, "stato": "normal"}, {"giorno": 24, "stato": "empty"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "empty"}, {"giorno": 27, "stato": "anomaly"}, {"giorno": 28, "stato": "normal"}, {"giorno": 29, "stato": "normal"}, {"giorno": 30, "stato": "normal"}, {"giorno": 31, "stato": "empty"}]}, {"mese": "2025-04", "label": "Apr 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "normal"}, {"giorno": 3, "stato": "normal"}, {"giorno": 4, "stato": "normal"}, {"giorno": 5, "stato": "empty"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "normal"}, {"giorno": 8, "stato": "normal"}, {"giorno": 9, "stato": "normal"}, {"giorno": 10, "stato": "anomaly"}, {"giorno": 11, "stato": "normal"}, {"giorno": 12, "stato": "empty"}, {"giorno": 13, "stato": "empty"}, {"giorno": 14, "stato": "empty"}, {"giorno": 15, "stato": "normal"}, {"giorno": 16, "stato": "normal"}, {"giorno": 17, "stato": "normal"}, {"giorno": 18, "stato": "normal"}, {"giorno": 19, "stato": "empty"}, {"giorno": 20, "stato": "empty"}, {"giorno": 21, "stato": "empty"}, {"giorno": 22, "stato": "empty"}, {"giorno": 23, "stato": "normal"}, {"giorno": 24, "stato": "normal"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "empty"}, {"giorno": 27, "stato": "empty"}, {"giorno": 28, "stato": "normal"}, {"giorno": 29, "stato": "anomaly"}, {"giorno": 30, "stato": "normal"}]}, {"mese": "2025-03", "label": "Mar 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "empty"}, {"giorno": 4, "stato": "normal"}, {"giorno": 5, "stato": "normal"}, {"giorno": 6, "stato": "anomaly"}, {"giorno": 7, "stato": "normal"}, {"giorno": 8, "stato": "empty"}, {"giorno": 9, "stato": "empty"}, {"giorno": 10, "stato": "empty"}, {"giorno": 11, "stato": "anomaly"}, {"giorno": 12, "stato": "normal"}, {"giorno": 13, "stato": "anomaly"}, {"giorno": 14, "stato": "normal"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "empty"}, {"giorno": 17, "stato": "empty"}, {"giorno": 18, "stato": "empty"}, {"giorno": 19, "stato": "normal"}, {"giorno": 20, "stato": "empty"}, {"giorno": 21, "stato": "normal"}, {"giorno": 22, "stato": "empty"}, {"giorno": 23, "stato": "empty"}, {"giorno": 24, "stato": "empty"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "normal"}, {"giorno": 27, "stato": "anomaly"}, {"giorno": 28, "stato": "empty"}, {"giorno": 29, "stato": "empty"}, {"giorno": 30, "stato": "empty"}, {"giorno": 31, "stato": "normal"}]}, {"mese": "2025-02", "label": "Feb 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "normal"}, {"giorno": 4, "stato": "normal"}, {"giorno": 5, "stato": "normal"}, {"giorno": 6, "stato": "normal"}, {"giorno": 7, "stato": "empty"}, {"giorno": 8, "stato": "empty"}, {"giorno": 9, "stato": "empty"}, {"giorno": 10, "stato": "anomaly"}, {"giorno": 11, "stato": "normal"}, {"giorno": 12, "stato": "anomaly"}, {"giorno": 13, "stato": "normal"}, {"giorno": 14, "stato": "normal"}, {"giorno": 15, "stato": "empty"}, {"giorno": 16, "stato": "empty"}, {"giorno": 17, "stato": "normal"}, {"giorno": 18, "stato": "normal"}, {"giorno": 19, "stato": "normal"}, {"giorno": 20, "stato": "anomaly"}, {"giorno": 21, "stato": "normal"}, {"giorno": 22, "stato": "empty"}, {"giorno": 23, "stato": "empty"}, {"giorno": 24, "stato": "anomaly"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "normal"}, {"giorno": 27, "stato": "empty"}, {"giorno": 28, "stato": "empty"}]}, {"mese": "2025-01", "label": "Gen 2025", "giorni": [{"giorno": 1, "stato": "empty"}, {"giorno": 2, "stato": "empty"}, {"giorno": 3, "stato": "empty"}, {"giorno": 4, "stato": "empty"}, {"giorno": 5, "stato": "empty"}, {"giorno": 6, "stato": "empty"}, {"giorno": 7, "stato": "empty"}, {"giorno": 8, "stato": "normal"}, {"giorno": 9, "stato": "normal"}, {"giorno": 10, "stato": "empty"}, {"giorno": 11, "stato": "empty"}, {"giorno": 12, "stato": "empty"}, {"giorno": 13, "stato": "empty"}, {"giorno": 14, "stato": "anomaly"}, {"giorno": 15, "stato": "normal"}, {"giorno": 16, "stato": "empty"}, {"giorno": 17, "stato": "empty"}, {"giorno": 18, "stato": "empty"}, {"giorno": 19, "stato": "empty"}, {"giorno": 20, "stato": "normal"}, {"giorno": 21, "stato": "normal"}, {"giorno": 22, "stato": "normal"}, {"giorno": 23, "stato": "anomaly"}, {"giorno": 24, "stato": "normal"}, {"giorno": 25, "stato": "empty"}, {"giorno": 26, "stato": "empty"}, {"giorno": 27, "stato": "anomaly"}, {"giorno": 28, "stato": "normal"}, {"giorno": 29, "stato": "empty"}, {"giorno": 30, "stato": "normal"}, {"giorno": 31, "stato": "empty"}]}];
+const WO_DATA      = [{"WO": 25027881, "ARTICOLO": "1204120201.0", "ARTICOLO_grouped": "ALTRO", "FASE": 14019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "23/02/2026", "Tempo Lavoraz. ORE": 1.2, "Tempo_Teorico_TOT_ORE": 1.35, "Indice_Inefficienza": 0.889, "prob_anomalia": 1.25, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023941, "ARTICOLO": "1202610121.0", "ARTICOLO_grouped": "ALTRO", "FASE": 16019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "23/02/2026", "Tempo Lavoraz. ORE": 1.48, "Tempo_Teorico_TOT_ORE": 1.47, "Indice_Inefficienza": 1.006, "prob_anomalia": 1.4800000190734863, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25006477, "ARTICOLO": "1202608321.0", "ARTICOLO_grouped": "ALTRO", "FASE": 18019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "23/02/2026", "Tempo Lavoraz. ORE": 4.34, "Tempo_Teorico_TOT_ORE": 3.54, "Indice_Inefficienza": 1.225, "prob_anomalia": 5.320000171661377, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023322, "ARTICOLO": "1204000111.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "20/02/2026", "Tempo Lavoraz. ORE": 10.15, "Tempo_Teorico_TOT_ORE": 12.56, "Indice_Inefficienza": 0.808, "prob_anomalia": 0.18000000715255737, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023449, "ARTICOLO": "1204120241.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "19/02/2026", "Tempo Lavoraz. ORE": 7.64, "Tempo_Teorico_TOT_ORE": 4.61, "Indice_Inefficienza": 1.656, "prob_anomalia": 24.8700008392334, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023589, "ARTICOLO": "1202610111.0", "ARTICOLO_grouped": "ALTRO", "FASE": 16019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "18/02/2026", "Tempo Lavoraz. ORE": 3.83, "Tempo_Teorico_TOT_ORE": 3.54, "Indice_Inefficienza": 1.082, "prob_anomalia": 0.17000000178813934, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 26001524, "ARTICOLO": "1204480191.0", "ARTICOLO_grouped": "ALTRO", "FASE": 14019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "18/02/2026", "Tempo Lavoraz. ORE": 0.94, "Tempo_Teorico_TOT_ORE": 0.89, "Indice_Inefficienza": 1.062, "prob_anomalia": 3.759999990463257, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25019744, "ARTICOLO": "1089910861.0", "ARTICOLO_grouped": "ALTRO", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "18/02/2026", "Tempo Lavoraz. ORE": 6.13, "Tempo_Teorico_TOT_ORE": 6.48, "Indice_Inefficienza": 0.946, "prob_anomalia": 1.4600000381469727, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25024098, "ARTICOLO": "1204360111.0", "ARTICOLO_grouped": "ALTRO", "FASE": 14019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "17/02/2026", "Tempo Lavoraz. ORE": 0.81, "Tempo_Teorico_TOT_ORE": 0.78, "Indice_Inefficienza": 1.036, "prob_anomalia": 2.3399999141693115, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023483, "ARTICOLO": "1207200121.0", "ARTICOLO_grouped": "ALTRO", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "17/02/2026", "Tempo Lavoraz. ORE": 46.88, "Tempo_Teorico_TOT_ORE": 34.45, "Indice_Inefficienza": 1.361, "prob_anomalia": 7.380000114440918, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023342, "ARTICOLO": "1204280121.0", "ARTICOLO_grouped": "ALTRO", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "11/02/2026", "Tempo Lavoraz. ORE": 13.41, "Tempo_Teorico_TOT_ORE": 12.08, "Indice_Inefficienza": 1.11, "prob_anomalia": 2.380000114440918, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25029217, "ARTICOLO": "1089930391.0", "ARTICOLO_grouped": "ALTRO", "FASE": 14019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "10/02/2026", "Tempo Lavoraz. ORE": 1.86, "Tempo_Teorico_TOT_ORE": 1.98, "Indice_Inefficienza": 0.94, "prob_anomalia": 0.38999998569488525, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023610, "ARTICOLO": "1203072091.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "10/02/2026", "Tempo Lavoraz. ORE": 6.16, "Tempo_Teorico_TOT_ORE": 6.9, "Indice_Inefficienza": 0.893, "prob_anomalia": 0.05999999865889549, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25033094, "ARTICOLO": "1089930581.0", "ARTICOLO_grouped": "1089930581.0", "FASE": 14019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "09/02/2026", "Tempo Lavoraz. ORE": 2.43, "Tempo_Teorico_TOT_ORE": 2.92, "Indice_Inefficienza": 0.833, "prob_anomalia": 0.8100000023841858, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25001684, "ARTICOLO": "1089990331.0", "ARTICOLO_grouped": "1089990331.0", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "09/02/2026", "Tempo Lavoraz. ORE": 54.3, "Tempo_Teorico_TOT_ORE": 44.83, "Indice_Inefficienza": 1.211, "prob_anomalia": 23.889999389648438, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023602, "ARTICOLO": "1089930611.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "04/02/2026", "Tempo Lavoraz. ORE": 15.54, "Tempo_Teorico_TOT_ORE": 15.47, "Indice_Inefficienza": 1.004, "prob_anomalia": 0.3199999928474426, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25015895, "ARTICOLO": "1202602101.0", "ARTICOLO_grouped": "1202602101.0", "FASE": 26044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "02/02/2026", "Tempo Lavoraz. ORE": 4.34, "Tempo_Teorico_TOT_ORE": 2.9, "Indice_Inefficienza": 1.499, "prob_anomalia": 55.189998626708984, "classe_pred": 1, "stato": "ATTENZIONE"}, {"WO": 25023355, "ARTICOLO": "1204480181.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "30/01/2026", "Tempo Lavoraz. ORE": 16.09, "Tempo_Teorico_TOT_ORE": 9.12, "Indice_Inefficienza": 1.765, "prob_anomalia": 31.309999465942383, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25029089, "ARTICOLO": "1083003421.0", "ARTICOLO_grouped": "1083003421.0", "FASE": 14019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "27/01/2026", "Tempo Lavoraz. ORE": 9.2, "Tempo_Teorico_TOT_ORE": 4.36, "Indice_Inefficienza": 2.112, "prob_anomalia": 91.47000122070312, "classe_pred": 1, "stato": "ANOMALIA"}, {"WO": 25021404, "ARTICOLO": "1201901031.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "26/01/2026", "Tempo Lavoraz. ORE": 4.77, "Tempo_Teorico_TOT_ORE": 5.49, "Indice_Inefficienza": 0.869, "prob_anomalia": 0.25999999046325684, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25030177, "ARTICOLO": "1083003421.0", "ARTICOLO_grouped": "1083003421.0", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "26/01/2026", "Tempo Lavoraz. ORE": 15.83, "Tempo_Teorico_TOT_ORE": 14.27, "Indice_Inefficienza": 1.109, "prob_anomalia": 10.600000381469727, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023942, "ARTICOLO": "1089930521.0", "ARTICOLO_grouped": "1089930521.0", "FASE": 20044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "22/01/2026", "Tempo Lavoraz. ORE": 14.27, "Tempo_Teorico_TOT_ORE": 13.79, "Indice_Inefficienza": 1.035, "prob_anomalia": 0.5199999809265137, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023783, "ARTICOLO": "1089930591.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 642.0, "Data_Ora_Fine": "21/01/2026", "Tempo Lavoraz. ORE": 6.31, "Tempo_Teorico_TOT_ORE": 6.27, "Indice_Inefficienza": 1.007, "prob_anomalia": 4.239999771118164, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023599, "ARTICOLO": "1089930531.0", "ARTICOLO_grouped": "1089930531.0", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "21/01/2026", "Tempo Lavoraz. ORE": 15.88, "Tempo_Teorico_TOT_ORE": 18.47, "Indice_Inefficienza": 0.86, "prob_anomalia": 0.23999999463558197, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25031889, "ARTICOLO": "1200100191.0", "ARTICOLO_grouped": "ALTRO", "FASE": 14017, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "20/01/2026", "Tempo Lavoraz. ORE": 0.44, "Tempo_Teorico_TOT_ORE": 0.35, "Indice_Inefficienza": 1.25, "prob_anomalia": 13.109999656677246, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023566, "ARTICOLO": "1202600141.0", "ARTICOLO_grouped": "ALTRO", "FASE": 18019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "19/01/2026", "Tempo Lavoraz. ORE": 1.18, "Tempo_Teorico_TOT_ORE": 1.05, "Indice_Inefficienza": 1.122, "prob_anomalia": 3.5299999713897705, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25030211, "ARTICOLO": "1089942721.0", "ARTICOLO_grouped": "ALTRO", "FASE": 20044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "19/01/2026", "Tempo Lavoraz. ORE": 1.26, "Tempo_Teorico_TOT_ORE": 1.01, "Indice_Inefficienza": 1.243, "prob_anomalia": 14.109999656677246, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023499, "ARTICOLO": "1203002111.0", "ARTICOLO_grouped": "1203002111.0", "FASE": 14019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "19/01/2026", "Tempo Lavoraz. ORE": 1.89, "Tempo_Teorico_TOT_ORE": 1.73, "Indice_Inefficienza": 1.091, "prob_anomalia": 2.559999942779541, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023322, "ARTICOLO": "1204000111.0", "ARTICOLO_grouped": "ALTRO", "FASE": 14017, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "19/01/2026", "Tempo Lavoraz. ORE": 3.56, "Tempo_Teorico_TOT_ORE": 3.61, "Indice_Inefficienza": 0.986, "prob_anomalia": 22.979999542236328, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25019623, "ARTICOLO": "1200300161.0", "ARTICOLO_grouped": "ALTRO", "FASE": 16019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "19/01/2026", "Tempo Lavoraz. ORE": 3.18, "Tempo_Teorico_TOT_ORE": 2.48, "Indice_Inefficienza": 1.284, "prob_anomalia": 83.31999969482422, "classe_pred": 1, "stato": "ANOMALIA"}, {"WO": 25024944, "ARTICOLO": "1089930281.0", "ARTICOLO_grouped": "1089930281.0", "FASE": 20044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "16/01/2026", "Tempo Lavoraz. ORE": 7.8, "Tempo_Teorico_TOT_ORE": 9.44, "Indice_Inefficienza": 0.826, "prob_anomalia": 0.1899999976158142, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023290, "ARTICOLO": "1201600151.0", "ARTICOLO_grouped": "ALTRO", "FASE": 20044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "14/01/2026", "Tempo Lavoraz. ORE": 5.54, "Tempo_Teorico_TOT_ORE": 6.6, "Indice_Inefficienza": 0.839, "prob_anomalia": 0.10000000149011612, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25019997, "ARTICOLO": "1089930581.0", "ARTICOLO_grouped": "1089930581.0", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "14/01/2026", "Tempo Lavoraz. ORE": 8.14, "Tempo_Teorico_TOT_ORE": 7.52, "Indice_Inefficienza": 1.083, "prob_anomalia": 8.380000114440918, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023600, "ARTICOLO": "1089930561.0", "ARTICOLO_grouped": "1089930561.0", "FASE": 20044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "12/01/2026", "Tempo Lavoraz. ORE": 12.59, "Tempo_Teorico_TOT_ORE": 8.51, "Indice_Inefficienza": 1.479, "prob_anomalia": 4.309999942779541, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25016448, "ARTICOLO": "1204120101.0", "ARTICOLO_grouped": "1204120101.0", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "08/01/2026", "Tempo Lavoraz. ORE": 5.03, "Tempo_Teorico_TOT_ORE": 5.93, "Indice_Inefficienza": 0.848, "prob_anomalia": 0.05000000074505806, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25025243, "ARTICOLO": "1083003601.0", "ARTICOLO_grouped": "ALTRO", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "07/01/2026", "Tempo Lavoraz. ORE": 5.16, "Tempo_Teorico_TOT_ORE": 3.44, "Indice_Inefficienza": 1.499, "prob_anomalia": 13.460000038146973, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25029069, "ARTICOLO": "1200400271.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "07/01/2026", "Tempo Lavoraz. ORE": 1.47, "Tempo_Teorico_TOT_ORE": 1.77, "Indice_Inefficienza": 0.831, "prob_anomalia": 0.9900000095367432, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023488, "ARTICOLO": "1207000121.0", "ARTICOLO_grouped": "ALTRO", "FASE": 16017, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "22/12/2025", "Tempo Lavoraz. ORE": 0.53, "Tempo_Teorico_TOT_ORE": 0.54, "Indice_Inefficienza": 0.973, "prob_anomalia": 1.8300000429153442, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25024944, "ARTICOLO": "1089930281.0", "ARTICOLO_grouped": "1089930281.0", "FASE": 16019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "22/12/2025", "Tempo Lavoraz. ORE": 5.36, "Tempo_Teorico_TOT_ORE": 5.22, "Indice_Inefficienza": 1.027, "prob_anomalia": 0.07000000029802322, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25022155, "ARTICOLO": "1203004101.0", "ARTICOLO_grouped": "ALTRO", "FASE": 20044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "19/12/2025", "Tempo Lavoraz. ORE": 4.98, "Tempo_Teorico_TOT_ORE": 3.09, "Indice_Inefficienza": 1.612, "prob_anomalia": 69.41999816894531, "classe_pred": 1, "stato": "ANOMALIA"}, {"WO": 25023604, "ARTICOLO": "1089930641.0", "ARTICOLO_grouped": "ALTRO", "FASE": 16019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "19/12/2025", "Tempo Lavoraz. ORE": 5.8, "Tempo_Teorico_TOT_ORE": 5.61, "Indice_Inefficienza": 1.034, "prob_anomalia": 4.989999771118164, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023636, "ARTICOLO": "1083000951.0", "ARTICOLO_grouped": "ALTRO", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "18/12/2025", "Tempo Lavoraz. ORE": 17.93, "Tempo_Teorico_TOT_ORE": 16.14, "Indice_Inefficienza": 1.111, "prob_anomalia": 1.7899999618530273, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25017478, "ARTICOLO": "1083003451.0", "ARTICOLO_grouped": "ALTRO", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "17/12/2025", "Tempo Lavoraz. ORE": 4.66, "Tempo_Teorico_TOT_ORE": 3.76, "Indice_Inefficienza": 1.241, "prob_anomalia": 9.979999542236328, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25018200, "ARTICOLO": "1207300111.0", "ARTICOLO_grouped": "ALTRO", "FASE": 24044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "16/12/2025", "Tempo Lavoraz. ORE": 3.36, "Tempo_Teorico_TOT_ORE": 1.53, "Indice_Inefficienza": 2.202, "prob_anomalia": 62.06999969482422, "classe_pred": 1, "stato": "ANOMALIA"}, {"WO": 25022993, "ARTICOLO": "1203002101.0", "ARTICOLO_grouped": "1203002101.0", "FASE": 20044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "10/12/2025", "Tempo Lavoraz. ORE": 6.6, "Tempo_Teorico_TOT_ORE": 5.62, "Indice_Inefficienza": 1.175, "prob_anomalia": 21.709999084472656, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25022336, "ARTICOLO": "1089995931.0", "ARTICOLO_grouped": "ALTRO", "FASE": 16017, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "09/12/2025", "Tempo Lavoraz. ORE": 2.89, "Tempo_Teorico_TOT_ORE": 2.15, "Indice_Inefficienza": 1.341, "prob_anomalia": 17.100000381469727, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023796, "ARTICOLO": "1204320126.0", "ARTICOLO_grouped": "1204320126.0", "FASE": 16019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "09/12/2025", "Tempo Lavoraz. ORE": 3.28, "Tempo_Teorico_TOT_ORE": 3.41, "Indice_Inefficienza": 0.961, "prob_anomalia": 0.7599999904632568, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25023353, "ARTICOLO": "1204480121.0", "ARTICOLO_grouped": "ALTRO", "FASE": 22044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "05/12/2025", "Tempo Lavoraz. ORE": 7.26, "Tempo_Teorico_TOT_ORE": 3.85, "Indice_Inefficienza": 1.885, "prob_anomalia": 50.310001373291016, "classe_pred": 1, "stato": "ATTENZIONE"}, {"WO": 25023497, "ARTICOLO": "1203004161.0", "ARTICOLO_grouped": "1203004161.0", "FASE": 20044, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "04/12/2025", "Tempo Lavoraz. ORE": 5.66, "Tempo_Teorico_TOT_ORE": 6.96, "Indice_Inefficienza": 0.813, "prob_anomalia": 0.12999999523162842, "classe_pred": 0, "stato": "NORMALE"}, {"WO": 25030211, "ARTICOLO": "1089942721.0", "ARTICOLO_grouped": "ALTRO", "FASE": 14019, "C.d.L. Prev": 643.0, "Data_Ora_Fine": "03/12/2025", "Tempo Lavoraz. ORE": 0.64, "Tempo_Teorico_TOT_ORE": 0.56, "Indice_Inefficienza": 1.143, "prob_anomalia": 4.769999980926514, "classe_pred": 0, "stato": "NORMALE"}];
+const ART_DATA     = {"labels": ["1202602101.0", "1083003421.0", "1204120101.0", "1089910831.0", "1201901001.0", "1204240131.0", "1089930571.0", "ALTRO"], "values": [50.0, 37.5, 33.3, 25.0, 25.0, 25.0, 25.0, 15.4], "counts": [2, 3, 2, 1, 1, 1, 1, 45]};
+const FASE_DATA    = {"labels": [18017, 14019, 26044, 18019, 22044, 28044], "values": [57.1, 26.9, 23.5, 16.7, 15.9, 12.5]};
+const FASE_X_MESE  = {"2025-09": {"labels": [18017, 14019, 22044, 16017, 14017, 18019], "values": [50.0, 30.0, 25.0, 16.7, 0.0, 0.0]}, "2025-10": {"labels": [22048, 22044, 14019, 16019, 16017, 20044], "values": [100.0, 50.0, 33.3, 16.7, 0.0, 0.0]}, "2025-11": {"labels": [18017, 14019, 26044, 24044, 22044, 20044], "values": [100.0, 40.0, 25.0, 20.0, 10.0, 0.0]}, "2025-12": {"labels": [22044, 20044, 24044, 16019, 16017, 14019], "values": [100.0, 33.3, 25.0, 0.0, 0.0, 0.0]}, "2026-01": {"labels": [16019, 14019, 14017, 18019, 20044, 22044], "values": [100.0, 50.0, 0.0, 0.0, 0.0, 0.0]}, "2026-02": {"labels": [26044, 14019, 16019, 18019, 22044, 24044], "values": [100.0, 0.0, 0.0, 0.0, 0.0, 0.0]}};
+const SPARK        = {"labels": ["09-25", "10-25", "11-25", "12-25", "01-26", "02-26"], "keys": ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"], "values": [5.7, 6.4, 9.2, 7.1, 5.5, 1.4]};
+const FORECAST     = [{"ARTICOLO_grouped": "1202602101.0", "FASE": "26044", "prob": 55.0, "risk_cls": "risk-medium", "n": 1}, {"ARTICOLO_grouped": "1089990331.0", "FASE": "24044", "prob": 24.0, "risk_cls": "risk-low", "n": 1}, {"ARTICOLO_grouped": "ALTRO", "FASE": "22044", "prob": 6.0, "risk_cls": "risk-low", "n": 4}, {"ARTICOLO_grouped": "ALTRO", "FASE": "18019", "prob": 5.0, "risk_cls": "risk-low", "n": 1}, {"ARTICOLO_grouped": "ALTRO", "FASE": "24044", "prob": 4.0, "risk_cls": "risk-low", "n": 3}, {"ARTICOLO_grouped": "ALTRO", "FASE": "14019", "prob": 2.0, "risk_cls": "risk-low", "n": 4}, {"ARTICOLO_grouped": "1089930581.0", "FASE": "14019", "prob": 1.0, "risk_cls": "risk-low", "n": 1}, {"ARTICOLO_grouped": "ALTRO", "FASE": "16019", "prob": 1.0, "risk_cls": "risk-low", "n": 2}];
+
+// ── Calendario multi-mese (più recente in cima, scrollabile) ─────────────────
+(function(){
+  const el = document.getElementById('calScroll');
+  CAL.forEach(m => {
+    const wrap = document.createElement('div');
+    wrap.className = 'cal-month';
+
+    const lbl = document.createElement('div');
+    lbl.className = 'cal-month-label';
+    lbl.textContent = m.label;
+    wrap.appendChild(lbl);
+
+    const grid = document.createElement('div');
+    grid.className = 'cal-grid';
+    m.giorni.forEach(d => {
+      const sq = document.createElement('div');
+      sq.className = 'cal-day ' + d.stato;
+      sq.title = `${d.giorno} ${m.label} — ${d.stato === 'anomaly' ? 'ANOMALIA' : d.stato === 'normal' ? 'NORMALE' : 'nessuna produzione'}`;
+      grid.appendChild(sq);
+    });
+    wrap.appendChild(grid);
+    el.appendChild(wrap);
+  });
+})();
+
+// ── Tabella WO ───────────────────────────────────────────────────────────────
+(function(){
+  const tb = document.getElementById('woTable');
+  const anomalyRows = WO_DATA.filter(r => r.classe_pred === 1 || r.stato === 'ANOMALIA' || r.stato === 'ATTENZIONE');
+  anomalyRows.forEach(r => {
+    const prob = (typeof r.prob_anomalia === 'number') ? r.prob_anomalia : null;
+    const probFmt = prob !== null ? prob.toFixed(2) + ' %' : '—';
+    const probColor = prob >= 80 ? 'var(--red)' : prob >= 60 ? 'var(--amber)' : 'var(--muted)';
+    const indice = r.Indice_Inefficienza ?? '-';
+    const indColor = indice >= 1.8 ? 'var(--red)' : indice >= 1.43 ? 'var(--amber)' : 'var(--muted)';
+    const stato = r.stato || 'ANOMALIA';
+    const badgeCls = stato === 'NORMALE' ? 'b-green' : stato === 'ATTENZIONE' ? 'b-amber' : 'b-red';
+    tb.innerHTML += `<tr>
+      <td>${r.WO||'—'}</td>
+      <td>${r.ARTICOLO||r.ARTICOLO_grouped||'—'}</td>
+      <td>${r.FASE||'—'}</td>
+      <td>${r['C.d.L. Prev']||'—'}</td>
+      <td>${r.Data_Ora_Fine||'—'}</td>
+      <td>${r.Tempo_Teorico_TOT_ORE??'—'} h</td>
+      <td>${r['Tempo Lavoraz. ORE']??'—'} h</td>
+      <td style="color:${indColor}">${indice}</td>
+      <td><span class="badge ${badgeCls}">${stato}</span></td>
+      <td style="color:${probColor};font-weight:500">${probFmt}</td>
+    </tr>`;
+  });
+  if (anomalyRows.length === 0) {
+    tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:1.5rem">Nessuna anomalia rilevata nel periodo</td></tr>';
+  }
+})();
+
+// ── Bar chart articoli ────────────────────────────────────────────────────────
+(function(){
+  const el = document.getElementById('artBars');
+  const max = Math.max(...ART_DATA.values, 1);
+  ART_DATA.labels.forEach((lbl, i) => {
+    const pct = ART_DATA.values[i];
+    const cls = pct >= 50 ? 'c-red' : pct >= 30 ? 'c-amber' : 'c-green';
+    el.innerHTML += `<div class="bar-row">
+      <div class="bar-lbl" title="${lbl}">${lbl}</div>
+      <div class="bar-track">
+        <div class="bar-fill ${cls}" style="width:0%" data-w="${pct/max*100}">${pct}%</div>
+      </div>
+      <div class="bar-pct">${pct}%</div>
+    </div>`;
+  });
+  requestAnimationFrame(() => {
+    document.querySelectorAll('#artBars .bar-fill').forEach(b => {
+      b.style.width = b.dataset.w + '%';
+    });
+  });
+})();
+
+// ── Fase chart: render con dati di un mese specifico ─────────────────────────
+function renderFaseChart(dati, meseLabel) {
+  const el    = document.getElementById('faseBars');
+  const title = document.getElementById('faseMeseTitle');
+  if (title) title.textContent = meseLabel || '';
+  el.innerHTML = '';
+  if (!dati || !dati.labels || !dati.labels.length) {
+    el.innerHTML = '<div style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">Nessun dato per questo mese.</div>';
+    return;
+  }
+  const max = Math.max(...dati.values, 1);
+  dati.labels.forEach((lbl, i) => {
+    const pct = dati.values[i];
+    const cls = pct >= 50 ? 'c-red' : pct >= 30 ? 'c-amber' : 'c-green';
+    el.innerHTML += `<div class="bar-row">
+      <div class="bar-lbl" style="width:80px" title="${lbl}">${lbl}</div>
+      <div class="bar-track">
+        <div class="bar-fill ${cls}" style="width:0%" data-w="${pct/max*100}">${pct}%</div>
+      </div>
+      <div class="bar-pct">${pct}%</div>
+    </div>`;
+  });
+  requestAnimationFrame(() => {
+    el.querySelectorAll('.bar-fill').forEach(b => { b.style.width = b.dataset.w + '%'; });
+  });
+}
+
+// ── Sparkline ore perse — con click per aggiornare fase chart ─────────────────
+(function(){
+  const el  = document.getElementById('sparkEl');
+  const lbl = document.getElementById('sparkLbl');
+  if (!SPARK.values.length) return;
+  const max = Math.max(...SPARK.values, .1);
+
+  // Mostra l'ultimo mese come default nel fase chart
+  const lastKey   = SPARK.keys ? SPARK.keys[SPARK.keys.length - 1] : null;
+  const lastLabel = SPARK.labels[SPARK.labels.length - 1] || '';
+  if (lastKey && FASE_X_MESE[lastKey]) renderFaseChart(FASE_X_MESE[lastKey], lastLabel);
+  else renderFaseChart(FASE_DATA, 'storico');
+
+  let selectedIdx = SPARK.values.length - 1;
+
+  SPARK.values.forEach((v, i) => {
+    const bar = document.createElement('div');
+    const isLast = i === SPARK.values.length - 1;
+    bar.className = 'spark-bar' + (isLast ? ' selected' : '');
+    bar.style.height = (v / max * 100) + '%';
+    bar.title = `${SPARK.labels[i]}: ${v} h perse — clicca per vedere le fasi`;
+    bar.dataset.idx = i;
+    bar.addEventListener('click', () => {
+      document.querySelectorAll('#sparkEl .spark-bar').forEach(b => b.classList.remove('selected'));
+      bar.classList.add('selected');
+      selectedIdx = i;
+      const key   = SPARK.keys ? SPARK.keys[i] : null;
+      const label = SPARK.labels[i] || '';
+      if (key && FASE_X_MESE[key]) renderFaseChart(FASE_X_MESE[key], label);
+      else renderFaseChart(FASE_DATA, 'storico');
+    });
+    el.appendChild(bar);
+  });
+
+  SPARK.labels.forEach(l => {
+    const s = document.createElement('span');
+    s.textContent = l;
+    lbl.appendChild(s);
+  });
+})();
+
+// ── Forecast ──────────────────────────────────────────────────────────────────
+(function(){
+  const el = document.getElementById('forecastGrid');
+  FORECAST.forEach(it => {
+    const artKey  = it.ARTICOLO_grouped || it.ARTICOLO || '—';
+    const faseKey = it.FASE || '—';
+    const probInt = Math.round(it.prob);
+    el.innerHTML += `<div class="fc-item ${it.risk_cls}">
+      <div class="fc-art">${artKey}</div>
+      <div class="fc-fase">${faseKey} &nbsp;·&nbsp; ${it.n} lavoraz.</div>
+      <div class="fc-bar"><div class="fc-fill" style="width:${probInt}%"></div></div>
+      <div class="fc-txt">Prob. anomalia: <strong>${probInt}%</strong></div>
+    </div>`;
+  });
+  if (!FORECAST.length) {
+    el.innerHTML = '<div style="font-family:var(--mono);font-size:.72rem;color:var(--muted)">Dati insufficienti per la previsione.</div>';
+  }
+})();
+</script>
+</body>
+</html>

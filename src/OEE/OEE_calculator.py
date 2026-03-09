@@ -39,8 +39,8 @@ import pandas as pd
 import numpy as np
 
 # standard OEE thresholds for manufacturing industry
-SOGLIA_OTTIMO  = 0.85
-SOGLIA_ACCETTABILE  = 0.65
+SOGLIA_OTTIMO = 0.85
+SOGLIA_ACCETTABILE = 0.65
 
 # components
 def calcola_disponibilita(df: pd.DataFrame) -> pd.Series:
