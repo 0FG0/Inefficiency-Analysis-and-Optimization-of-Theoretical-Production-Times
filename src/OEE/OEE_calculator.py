@@ -94,22 +94,3 @@ def calcola_oee(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return out
-
-# alert
-def genera_alert(df_oee: pd.DataFrame) -> pd.DataFrame:
-    mask = (
-        (df_oee["OEE"] < SOGLIA_ACCETTABILE)
-        | (df_oee["OEE_Performance"] < 0.70)
-        | (df_oee["OEE_Disponibilita"] < 0.80)
-        | (df_oee["OEE_Qualita"] < 0.95)
-    )
-    alert = df_oee[mask].copy()
-    alert["Alert_Motivo"] = ""
-
-    alert.loc[alert["OEE"] < SOGLIA_ACCETTABILE, "Alert_Motivo"] += "OEE_CRITICO "
-    alert.loc[alert["OEE_Performance"] < 0.70, "Alert_Motivo"] += "PERFORMANCE_BASSA "
-    alert.loc[alert["OEE_Disponibilita"] < 0.80, "Alert_Motivo"] += "DISPONIBILITA_BASSA "
-    alert.loc[alert["OEE_Qualita"] < 0.95, "Alert_Motivo"] += "QUALITA_BASSA "
-
-    alert["Alert_Motivo"] = alert["Alert_Motivo"].str.strip()
-    return alert
