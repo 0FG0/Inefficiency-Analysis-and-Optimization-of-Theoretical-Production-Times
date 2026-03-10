@@ -1,6 +1,6 @@
 # Inefficiency Analysis and Optimization of Theoretical Production Times through Machine Learning
 
-## 🎯 Project Objective
+## Project Objective 🎯 
 
 This project develops machine learning models to analyze and predict production inefficiencies in industrial machinery, improve the estimation of theoretical processing times, and calculate the Overall Equipment Effectiveness (OEE) index. Using regression and classification techniques, the system identifies operational anomalies, redefines theoretical times more consistently with actual times, and provides interactive dashboards for production monitoring. The goal is to support industrial decision-making with quantitative and replicable predictive tools.
 
@@ -132,46 +132,7 @@ Both commands produce standalone HTML files in `outputs/` that can be opened dir
     python src\OEE\OEE_regression.py
 ```
 
-## 4. Project Structure 📁
-
-```
-tesi_efficienza_macchine/
-├── main.py                          # Inference entry point (all six models)
-├── requirements.txt
-├── data/
-│   ├── processed/
-│   │   ├── clean_data.csv
-│   │   └── koepfer_160_2.csv        # Main dataset
-│   └── raw/
-│       └── raw_data.csv
-├── models/
-│   ├── classification/              # Saved classification model .pkl files
-│   └── regression/                  # Saved regression model .pkl files (incl. OEE)
-├── notebooks/
-│   └── data_cleaning.ipynb
-├── outputs/
-│   ├── predizioni.csv               # Inference output
-│   ├── dashboard_oee.html           # OEE interactive dashboard
-│   └── dashboard_anomaly.html       # Anomaly detection interactive dashboard
-└── src/
-    ├── feature_engineering.py       # Shared feature engineering utilities
-    ├── classification/
-    │   ├── classification_models_standard.py
-    │   ├── classification_models_anomaly_oriented.py
-    │   ├── classification_models_anomaly_bigdata.py
-    │   ├── classificazione_soglie_custom.py
-    │   └── dashboard.py             # Anomaly dashboard generator
-    ├── OEE/
-    │   ├── OEE_calculator.py        # OEE computation (A, P, Q, alerts)
-    │   ├── OEE_feature_engineering.py
-    │   ├── OEE_regression.py        # OEE regression model training
-    │   └── dashboard.py             # OEE dashboard generator
-    └── regression/
-        ├── regression_inefficiency_models.py
-        └── regression_time_models.py
-```
-
-## 5. Output Predictions CSV
+## 4. Output Predictions CSV
 
 The `predizioni.csv` file produced by `main.py` contains the original work-order identifiers alongside six prediction columns:
 
