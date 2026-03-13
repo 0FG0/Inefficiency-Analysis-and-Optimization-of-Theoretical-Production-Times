@@ -200,7 +200,6 @@ for name, model in base_models.items():
     results.append(result)
     trained_models[name] = model 
 
-
 # random forest grid search
 print(" \nRANDOM FOREST GRID SEARCH")
 rf_pipeline = Pipeline([

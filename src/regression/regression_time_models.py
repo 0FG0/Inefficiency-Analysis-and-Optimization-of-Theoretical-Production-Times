@@ -28,6 +28,8 @@ BASE_DIR = CURRENT_DIR
 PROJECT_ROOT = os.path.dirname(SRC_DIR)
 DATA_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "koepfer_160_2.csv")
 OUTPUT_PLOT_PATH = os.path.join(PROJECT_ROOT, "outputs", "times_compared_scatter.png")
+OUTPUT_PLOT_RAW_PATH = os.path.join(PROJECT_ROOT, "outputs", "times_raw_koepfer2_scatter.png")
+RAW_PLOT_ROLLING_WINDOW = 15
 MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "best_regressione_time.pkl")
 PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "parametri_preprocessing_tempo.pkl")
 
@@ -35,7 +37,9 @@ PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "parametri_prep
 df = pd.read_csv(DATA_PATH)
 
 # ARTICOLO_grouped + OHE
-if "ARTICOLO" in df.columns:
+if "ARTICOLO" not in df.columns:
+    df["ARTICOLO"] = "MISSING_ARTICOLO"
+else:
     df["ARTICOLO"] = df["ARTICOLO"].fillna("MISSING_ARTICOLO").astype(str)
 
 counts = df['ARTICOLO'].value_counts()
@@ -51,12 +55,16 @@ df['ARTICOLO_grouped'] = df['ARTICOLO_grouped'].fillna('ALTRO').astype(str)
 df = pipeline_tempo(df)
 
 # save real datas to compare them with models datas
-confronto_cols = df[["Tempo Lavoraz. ORE", "Tempo_Teorico_TOT_ORE"]].copy()
+confronto_cols_list = ["Tempo Lavoraz. ORE", "Tempo Macc AS400 ORE"]
+if "Tempo_Teorico_TOT_ORE" in df.columns:
+    confronto_cols_list.append("Tempo_Teorico_TOT_ORE")
+confronto_cols = df[confronto_cols_list].copy()
 
 cols_to_drop = [
     "Tempo Lavoraz. ORE",           
     "Indice_Inefficienza",          
-    "Tempo_Teorico_TOT_ORE",        
+    "Tempo_Teorico_TOT_ORE", 
+    "Tempo Macc AS400 ORE",       
     "WO",
     "ARTICOLO",
     "Descrizione Articolo",
@@ -68,6 +76,46 @@ cols_to_drop = [
 
 y = df["Tempo Lavoraz. ORE"]
 X = df.drop(columns=cols_to_drop, errors="ignore")
+
+# raw comparison between theoretical, actual and AS400 times
+required_cols_raw_plot = {"Tempo Lavoraz. ORE", "Tempo_Teorico_TOT_ORE", "Tempo Macc AS400 ORE"}
+if required_cols_raw_plot.issubset(df.columns):
+    if "Data_Ora_Fine" in df.columns:
+        df_raw_plot = df.sort_values("Data_Ora_Fine").reset_index(drop=True)
+    else:
+        df_raw_plot = df.reset_index(drop=True)
+
+    window = max(5, min(RAW_PLOT_ROLLING_WINDOW, len(df_raw_plot)))
+    effettivo_smooth = df_raw_plot["Tempo Lavoraz. ORE"].rolling(window=window, min_periods=1).mean()
+    teorico_smooth = df_raw_plot["Tempo_Teorico_TOT_ORE"].rolling(window=window, min_periods=1).mean()
+    as400_smooth = df_raw_plot["Tempo Macc AS400 ORE"].rolling(window=window, min_periods=1).mean()
+
+    fig_raw, ax_raw = plt.subplots(figsize=(10, 5))
+    idx_raw = range(len(df_raw_plot))
+
+    ax_raw.plot(idx_raw, effettivo_smooth.values, label=f"Effettivo (media mobile {window})", color="orangered", linewidth=2.2, zorder=3)
+    ax_raw.plot(idx_raw, teorico_smooth.values, label=f"Tempo Teorico TOT (media mobile {window})", color="royalblue", linewidth=2.2)
+    ax_raw.plot(idx_raw, as400_smooth.values, label=f"Tempo Macc AS400 (media mobile {window})", color="limegreen", linewidth=2.2)
+
+    ax_raw.grid(True, axis='both', which='major', color='lightgray', linestyle='-', linewidth=0.5, alpha=0.7)
+    ax_raw.tick_params(axis='y', labelsize=10)
+    ax_raw.tick_params(axis='x', labelsize=5.5)
+    tick_step = 25
+    ax_raw.set_xticks(np.arange(0, len(df_raw_plot), tick_step))
+
+    ax_raw.set_title("Confronto Koepfer 160/2 (trend): Teorico vs Effettivo vs Macc AS400", fontsize=13, fontweight="bold")
+    ax_raw.set_xlabel("Campioni (dataset completo, ordinati temporalmente)")
+    ax_raw.set_ylabel("Tempo (ore)")
+    ax_raw.set_ylim(0, 17.5)
+    ax_raw.legend()
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(OUTPUT_PLOT_RAW_PATH), exist_ok=True)
+    plt.savefig(OUTPUT_PLOT_RAW_PATH, dpi=150)
+    plt.show()
+    print(f"\nGrafico trend confronto grezzo salvato in {OUTPUT_PLOT_RAW_PATH} (media mobile={window})")
+else:
+    missing_cols_raw_plot = sorted(list(required_cols_raw_plot - set(df.columns)))
+    print(f"\nGrafico confronto grezzo non generato: colonne mancanti {missing_cols_raw_plot}")
 
 # find couples with high correlation
 print("ANALISI CORRELAZIONI TRA FEATURES (soglia > 0.7):")
@@ -293,58 +341,86 @@ y_test_reset = y_test.reset_index(drop=True)
 
 tabella_confronto = pd.DataFrame({
     "Tempo_Effettivo_ORE": y_test_reset,
-    "Tempo_Teorico_AS400_ORE": confronto_test["Tempo_Teorico_TOT_ORE"].values,
+    "Tempo_Macc_AS400_ORE": confronto_test["Tempo Macc AS400 ORE"].values,
     "Tempo_Predetto_ML_ORE": y_pred_best,
 })
 
-# absolute errors 
+if "Tempo_Teorico_TOT_ORE" in confronto_test.columns:
+    tabella_confronto["Tempo_Teorico_TOT_ORE"] = confronto_test["Tempo_Teorico_TOT_ORE"].values
+else:
+    tabella_confronto["Tempo_Teorico_TOT_ORE"] = np.nan
+
+# absolute errors
 tabella_confronto["Errore_AS400_ORE"] = (
-    tabella_confronto["Tempo_Effettivo_ORE"] - tabella_confronto["Tempo_Teorico_AS400_ORE"]
+    tabella_confronto["Tempo_Effettivo_ORE"] - tabella_confronto["Tempo_Macc_AS400_ORE"]
 ).abs()
 
 tabella_confronto["Errore_ML_ORE"] = (
     tabella_confronto["Tempo_Effettivo_ORE"] - tabella_confronto["Tempo_Predetto_ML_ORE"]
 ).abs()
 
-tabella_confronto["ML_migliora"] = (
+tabella_confronto["Errore_Teorico_ORE"] = (
+    tabella_confronto["Tempo_Effettivo_ORE"] - tabella_confronto["Tempo_Teorico_TOT_ORE"]
+).abs()
+
+tabella_confronto["ML_migliora_vs_AS400"] = (
     tabella_confronto["Errore_ML_ORE"] < tabella_confronto["Errore_AS400_ORE"]
+)
+tabella_confronto["ML_migliora_vs_Teorico"] = (
+    tabella_confronto["Errore_Teorico_ORE"].notna()
+    & (tabella_confronto["Errore_ML_ORE"] < tabella_confronto["Errore_Teorico_ORE"])
 )
 
 print(f"\n\nTABELLA DI CONFRONTO TEMPI (modello: {nome_best}):")
 print(tabella_confronto.round(4).to_string(index=False))
 
-# how many times does the model perform better then real datas
+# how many times does the model perform better
 n_test = len(tabella_confronto)
-n_migliora = tabella_confronto["ML_migliora"].sum()
-pct_migliora = n_migliora / n_test * 100
+n_migliora_as400 = tabella_confronto["ML_migliora_vs_AS400"].sum()
+n_migliora_teorico = tabella_confronto["ML_migliora_vs_Teorico"].sum()
+n_teorico_valido = tabella_confronto["Errore_Teorico_ORE"].notna().sum()
+pct_migliora_as400 = n_migliora_as400 / n_test * 100
+pct_migliora_teorico = (n_migliora_teorico / n_teorico_valido * 100) if n_teorico_valido > 0 else np.nan
 
 rmse_as400 = np.sqrt(np.mean(tabella_confronto["Errore_AS400_ORE"] ** 2))
 rmse_ml = np.sqrt(np.mean(tabella_confronto["Errore_ML_ORE"] ** 2))
 
-mape_as400_val = mape(tabella_confronto["Tempo_Effettivo_ORE"].values, tabella_confronto["Tempo_Teorico_AS400_ORE"].values)
+if n_teorico_valido > 0:
+    rmse_teorico = np.sqrt(np.mean(tabella_confronto.loc[tabella_confronto["Errore_Teorico_ORE"].notna(), "Errore_Teorico_ORE"] ** 2))
+    mape_teorico_val = mape(
+        tabella_confronto.loc[tabella_confronto["Tempo_Teorico_TOT_ORE"].notna(), "Tempo_Effettivo_ORE"].values,
+        tabella_confronto.loc[tabella_confronto["Tempo_Teorico_TOT_ORE"].notna(), "Tempo_Teorico_TOT_ORE"].values,
+    )
+else:
+    rmse_teorico = np.nan
+    mape_teorico_val = np.nan
+
+mape_as400_val = mape(tabella_confronto["Tempo_Effettivo_ORE"].values, tabella_confronto["Tempo_Macc_AS400_ORE"].values)
 mape_ml_val = mape(tabella_confronto["Tempo_Effettivo_ORE"].values, tabella_confronto["Tempo_Predetto_ML_ORE"].values)
 
-riduzione_rmse = (rmse_as400 - rmse_ml) / rmse_as400 * 100
-riduzione_mape = (mape_as400_val - mape_ml_val) / mape_as400_val * 100
-
-print(f"\n\nSTATISTICHE DI CONFRONTO - {nome_best} vs Tempo Teorico AS400:")
-print(f"  Campioni nel test set:                    {n_test}")
-print(f"  Casi in cui ML è più preciso di AS400:    {n_migliora} / {n_test}  ({pct_migliora:.1f}%)")
+print(f"\n\nSTATISTICHE DI CONFRONTO - {nome_best} vs Tempo Macc AS400 vs Tempo Teorico TOT:")
+print(f"  Campioni nel test set:                          {n_test}")
+print(f"  Casi in cui ML è più preciso di Tempo Macc AS400:  {n_migliora_as400} / {n_test}  ({pct_migliora_as400:.1f}%)")
+if n_teorico_valido > 0:
+    print(f"  Casi in cui ML è più preciso di Tempo Teorico TOT: {n_migliora_teorico} / {n_teorico_valido}  ({pct_migliora_teorico:.1f}%)")
+else:
+    print("  Casi in cui ML è più preciso di Tempo Teorico TOT: non calcolabile (colonna assente o vuota)")
 print(f"")
-print(f"  RMSE Tempo Teorico AS400:                 {rmse_as400:.4f} ore")
-print(f"  RMSE Modello ML:                          {rmse_ml:.4f} ore")
-print(f"  Riduzione RMSE:                           {riduzione_rmse:.1f}%")
-print(f"")
-print(f"  MAPE Tempo Teorico AS400:                 {mape_as400_val:.2f}%")
-print(f"  MAPE Modello ML:                          {mape_ml_val:.2f}%")
-print(f"  Riduzione MAPE:                           {riduzione_mape:.1f}%")
+print(f"  {'Modello':<35} {'RMSE':>10} {'MAPE':>10}")
+print(f"  {'-'*55}")
+if n_teorico_valido > 0:
+    print(f"  {'Tempo Teorico TOT (pezzixciclo)':<35} {rmse_teorico:>9.4f}  {mape_teorico_val:>8.2f}%")
+else:
+    print(f"  {'Tempo Teorico TOT (pezzixciclo)':<35} {'n/a':>9}  {'n/a':>8}")
+print(f"  {'Tempo Macc AS400':<35} {rmse_as400:>9.4f}  {mape_as400_val:>8.2f}%")
+print(f"  {'Modello ML (' + nome_best + ')':<35} {rmse_ml:>9.4f}  {mape_ml_val:>8.2f}%")
 
 # graph comparing teoric time predicted vs real teoric time
 fig, ax = plt.subplots(figsize=(10, 5))
 idx = range(n_test)
 
 ax.scatter(idx, tabella_confronto["Tempo_Effettivo_ORE"].values, label="Effettivo", color="orangered", s=30, alpha=0.7, zorder=3)
-ax.scatter(idx, tabella_confronto["Tempo_Teorico_AS400_ORE"].values, label="Teorico AS400", color="lime", s=30, alpha=0.7)
+ax.scatter(idx, tabella_confronto["Tempo_Macc_AS400_ORE"].values, label="Tempo Macc AS400", color="lime", s=30, alpha=0.7)
 ax.scatter(idx, tabella_confronto["Tempo_Predetto_ML_ORE"].values, label=f"Predetto ML ({nome_best})", color="royalblue", s=30, alpha=0.7)
 
 ax.grid(True, axis='both', which='major', color='lightgray', linestyle='-', linewidth=0.5, alpha=0.7)
@@ -353,10 +429,10 @@ ax.grid(True, axis='x', which='minor', color='lightgray', linestyle=':', linewid
 ax.tick_params(axis='y', labelsize=10)
 ax.tick_params(axis='x', labelsize=5.5)
 
-ax.set_xticks(idx[::1]) 
-ax.set_xticks(idx, minor=True)  
+ax.set_xticks(idx[::1])
+ax.set_xticks(idx, minor=True)
 
-ax.set_title("Confronto: Tempo Effettivo vs Teorico AS400 vs Predetto ML", fontsize=13, fontweight="bold")
+ax.set_title("Confronto: Tempo Effettivo vs Macc AS400 vs Predetto ML", fontsize=13, fontweight="bold")
 ax.set_xlabel("Campioni (test set, ordinati per indice)")
 ax.set_ylabel("Tempo (ore)")
 ax.legend()
