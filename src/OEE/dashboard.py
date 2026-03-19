@@ -72,6 +72,18 @@ def top_wo_critici(df: pd.DataFrame, n: int = 10) -> list:
     return out.to_dict(orient="records")
 
 
+def tutti_wo_per_tabella(df: pd.DataFrame) -> list:
+    cols = [c for c in ["WO", "FASE", "ARTICOLO", "Data_Ora_Fine", "OEE", "OEE_Classe",
+                        "OEE_Disponibilita", "OEE_Performance", "OEE_Qualita"] if c in df.columns]
+    out = df[cols].dropna(subset=["OEE"]).sort_values("OEE").round(4).copy()
+    for col in ["OEE_Classe"]:
+        if col in out.columns:
+            out[col] = out[col].astype(str)
+    if "Data_Ora_Fine" in out.columns:
+        out["Data_Ora_Fine"] = out["Data_Ora_Fine"].dt.strftime("%Y-%m-%d")
+    return out.to_dict(orient="records")
+
+
 def distribuzione_classi(df: pd.DataFrame) -> dict:
     if "OEE_Classe" not in df.columns:
         return {}
@@ -90,15 +102,9 @@ def oee_per_articolo(df: pd.DataFrame, n: int = 15) -> dict:
 
 
 def forecast_oee_per_articolo_fase(df: pd.DataFrame) -> list:
-    """
-    Per ogni combinazione articolo+fase usa il modello XGBoost di regressione
-    per stimare l'OEE atteso nel mese successivo.
-    Fallback alla media storica se il modello non e' disponibile.
-    """
     if "ARTICOLO" not in df.columns or "OEE" not in df.columns:
         return []
 
-    # ─ Carica modello e parametri ──────────────────────────────────────────
     model, params = None, {}
     try:
         model  = joblib.load(MODEL_REG_PATH)
@@ -106,7 +112,6 @@ def forecast_oee_per_articolo_fase(df: pd.DataFrame) -> list:
     except Exception:
         pass
 
-    # ─ Feature engineering sullo storico ────────────────────────────────
     articoli_top = params.get("articoli_top", df["ARTICOLO"].value_counts().nlargest(30).index.tolist())
     df_fe = df.copy()
     df_fe["ARTICOLO_grouped"] = df_fe["ARTICOLO"].where(df_fe["ARTICOLO"].isin(articoli_top), other="ALTRO")
@@ -115,7 +120,6 @@ def forecast_oee_per_articolo_fase(df: pd.DataFrame) -> list:
     feature_cols = params.get("feature_cols", get_feature_cols_oee())
     feature_cols = [c for c in feature_cols if c in df_fe.columns]
 
-    # Feature temporali del mese successivo
     today     = date.today()
     if today.month == 12:
         next_m = date(today.year + 1, 1, 1)
@@ -127,7 +131,6 @@ def forecast_oee_per_articolo_fase(df: pd.DataFrame) -> list:
 
     group_cols = ["ARTICOLO", "FASE"] if "FASE" in df_fe.columns else ["ARTICOLO"]
 
-    # Medie componenti storiche (per display)
     comp_cols = [c for c in ["OEE_Disponibilita", "OEE_Performance", "OEE_Qualita"] if c in df.columns]
     comp_means = df.groupby(group_cols)[comp_cols].mean() if comp_cols else None
 
@@ -136,7 +139,6 @@ def forecast_oee_per_articolo_fase(df: pd.DataFrame) -> list:
         if len(group) < 1:
             continue
 
-        # Riga sintetica: mediana delle feature numeriche, moda per categoriali
         row = {}
         for col in feature_cols:
             if col not in group.columns:
@@ -150,12 +152,10 @@ def forecast_oee_per_articolo_fase(df: pd.DataFrame) -> list:
             else:
                 row[col] = vals.mode().iloc[0] if not vals.mode().empty else "MISSING"
 
-        # Override feature temporali con il mese successivo
         for tcol, tval in [("mese", next_month_num), ("giorno_settimana", next_dow), ("settimana_anno", next_week)]:
             if tcol in row:
                 row[tcol] = tval
 
-        # Lag e rolling dall'ultimo storico del gruppo
         if "Data_Ora_Fine" in group.columns:
             recent_oee = group.sort_values("Data_Ora_Fine")["OEE"].dropna().tail(3).tolist()
         else:
@@ -171,7 +171,6 @@ def forecast_oee_per_articolo_fase(df: pd.DataFrame) -> list:
         for col in X_row.select_dtypes(include="object").columns:
             X_row[col] = X_row[col].fillna("MISSING").astype(str)
 
-        # Predizione — modello ML o fallback alla media
         use_model = False
         if model is not None:
             try:
@@ -194,7 +193,6 @@ def forecast_oee_per_articolo_fase(df: pd.DataFrame) -> list:
             "use_model": use_model,
         }
 
-        # Componenti storiche per display
         if comp_means is not None:
             try:
                 comp_row = comp_means.loc[keys]
@@ -239,6 +237,7 @@ def kpi_globali(df: pd.DataFrame) -> dict:
         "totale_wo":   len(df),
         "generato_il": datetime.now().strftime("%d/%m/%Y %H:%M"),
     }
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -311,9 +310,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   .kpi-row      {{ grid-template-columns: repeat(4, 1fr); }}
   .charts-row   {{ grid-template-columns: 2fr 1fr; }}
-  /* WO critici: occupa tutta la riga */
   .wo-row       {{ grid-template-columns: 1fr; }}
-
 
   .card {{
     background: var(--surface);
@@ -422,15 +419,66 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .oee-bar.ok  {{ background: var(--accent); }}
   .oee-bar.mid {{ background: var(--warn); }}
 
-  /* WO table scrollable, mostra almeno 4 righe */
   .wo-table-wrap {{
     overflow-x: auto;
     overflow-y: auto;
-    /* header ~32px + 4 righe ~38px ≈ 184px */
-    max-height: 220px;
+    max-height: 340px;
     scrollbar-width: thin;
     scrollbar-color: #1e2130 transparent;
   }}
+
+  .wo-count-badge {{
+    display: inline-block;
+    margin-left: 10px;
+    padding: 1px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(91,138,245,0.15);
+    color: #5b8af5;
+    vertical-align: middle;
+    letter-spacing: 0.04em;
+    font-family: 'DM Mono', monospace;
+  }}
+
+  /* ── FRECCE ORDINAMENTO — più grandi e visibili ── */
+  th[data-col] {{ cursor: pointer; user-select: none; white-space: nowrap; }}
+  th[data-col]:hover {{ color: var(--text); }}
+  .sort-icon {{
+    font-size: 17px;
+    opacity: 0.55;
+    margin-left: 5px;
+    line-height: 1;
+    vertical-align: middle;
+  }}
+  th.sort-asc  .sort-icon {{ opacity: 1; color: var(--accent); font-size: 17px; }}
+  th.sort-desc .sort-icon {{ opacity: 1; color: var(--accent); font-size: 17px; }}
+  #woHeaderRow th {{
+    padding-top: 12px;
+    padding-bottom: 12px;
+    font-size: 11px;
+  }}
+  #woFilterRow th {{
+    padding: 8px 6px;
+    border-bottom: 2px solid var(--border);
+    background: var(--bg);
+    position: sticky;
+    top: 33px;
+    z-index: 1;
+  }}
+  .col-filter {{
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 3px 6px;
+    outline: none;
+    transition: border-color .15s;
+  }}
+  .col-filter:focus {{ border-color: var(--accent); }}
 
   footer {{
     padding: 16px 40px;
@@ -513,14 +561,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <span>Generato il {generato_il} &nbsp;·&nbsp; {totale_wo} WO analizzati</span>
 </header>
 
-<div class="period-btns">
+<div class="period-btns" id="periodBtnsTop">
   <button class="period-btn active" id="btn_all" onclick="filterByPeriod('all')">Tutto</button>
-  <button class="period-btn" id="btn_1y" onclick="filterByPeriod('1y')">Ultimo anno</button>
-  <button class="period-btn" id="btn_3m" onclick="filterByPeriod('3m')">Ultimi 3 mesi</button>
-  <button class="period-btn" id="btn_1m" onclick="filterByPeriod('1m')">Ultimo mese</button>
+  <button class="period-btn" id="btn_1y"  onclick="filterByPeriod('1y')">Ultimo anno</button>
+  <button class="period-btn" id="btn_3m"  onclick="filterByPeriod('3m')">Ultimi 3 mesi</button>
+  <button class="period-btn" id="btn_1m"  onclick="filterByPeriod('1m')">Ultimo mese</button>
 </div>
 
-<!-- KPI -->
 <div class="grid kpi-row">
   <div class="card kpi-card">
     <div class="kpi-label">OEE Medio</div>
@@ -544,7 +591,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
-<!-- TREND + DISTRIBUZIONE -->
 <div class="grid charts-row">
   <div class="card">
     <div class="card-title">Trend OEE — dettaglio mensile</div>
@@ -556,15 +602,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
-<!-- WO CRITICI — riga intera -->
+<div class="period-btns" id="periodBtnsWO">
+  <button class="period-btn active" id="wo_btn_all" onclick="filterByPeriod('all')">Tutto</button>
+  <button class="period-btn" id="wo_btn_1y"  onclick="filterByPeriod('1y')">Ultimo anno</button>
+  <button class="period-btn" id="wo_btn_3m"  onclick="filterByPeriod('3m')">Ultimi 3 mesi</button>
+  <button class="period-btn" id="wo_btn_1m"  onclick="filterByPeriod('1m')">Ultimo mese</button>
+</div>
+
 <div class="grid wo-row">
   <div class="card">
-    <div class="card-title">WO critici — OEE sotto soglia</div>
+    <div class="card-title">
+      Work Order OEE
+      <span class="wo-count-badge" id="woCountBadge">—</span>
+    </div>
     <div class="wo-table-wrap">
-      <table>
+      <table id="woTable">
         <thead>
-          <tr>
-            <th>WO</th><th>Articolo</th><th>Fase</th><th>OEE</th><th>D</th><th>P</th><th>Q</th><th>Classe</th>
+          <tr id="woHeaderRow">
+            <th data-col="WO">WO <span class="sort-icon">↕</span></th>
+            <th data-col="ARTICOLO">Articolo <span class="sort-icon">↕</span></th>
+            <th data-col="FASE">Fase <span class="sort-icon">↕</span></th>
+            <th data-col="Data_Ora_Fine">Data <span class="sort-icon">↓</span></th>
+            <th data-col="OEE">OEE <span class="sort-icon">↕</span></th>
+            <th data-col="OEE_Disponibilita">D <span class="sort-icon">↕</span></th>
+            <th data-col="OEE_Performance">P <span class="sort-icon">↕</span></th>
+            <th data-col="OEE_Qualita">Q <span class="sort-icon">↕</span></th>
+            <th data-col="OEE_Classe">Classe <span class="sort-icon">↕</span></th>
+          </tr>
+          <tr id="woFilterRow">
+            <th><input class="col-filter" data-col="WO"               placeholder="Filtra…"></th>
+            <th><input class="col-filter" data-col="ARTICOLO"         placeholder="Filtra…"></th>
+            <th><input class="col-filter" data-col="FASE"             placeholder="Filtra…"></th>
+            <th><input class="col-filter" data-col="Data_Ora_Fine"    placeholder="aaaa-mm-gg"></th>
+            <th><input class="col-filter" data-col="OEE"              placeholder="es. >0.7"></th>
+            <th><input class="col-filter" data-col="OEE_Disponibilita" placeholder="es. >0.8"></th>
+            <th><input class="col-filter" data-col="OEE_Performance"  placeholder="es. <0.5"></th>
+            <th><input class="col-filter" data-col="OEE_Qualita"      placeholder="es. >0.9"></th>
+            <th><input class="col-filter" data-col="OEE_Classe"       placeholder="Filtra…"></th>
           </tr>
         </thead>
         <tbody id="alertTable"></tbody>
@@ -573,7 +647,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
-<!-- ARTICOLI -->
 <div class="grid wo-row">
   <div class="card">
     <div class="card-title">Articoli con OEE più basso</div>
@@ -581,7 +654,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 </div>
 
-<!-- FORECAST OEE -->
 <div class="grid wo-row">
   <div class="card">
     <div class="card-title">Previsione OEE — mese successivo</div>
@@ -640,11 +712,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <script>
-const TREND   = {trend_json};
-const DIST    = {dist_json};
-const ARTS    = {art_json};
-const CRITICI = {critici_json};
-const KPI     = {kpi_json};
+const TREND        = {trend_json};
+const DIST         = {dist_json};
+const ARTS         = {art_json};
+const ALL_WO       = {all_wo_json};
+const KPI          = {kpi_json};
 
 // ── Trend Charts (mensile) ─────────────────────────────────────────────────
 if (TREND.labels && TREND.labels.length) {{
@@ -729,25 +801,134 @@ if (ARTS.labels && ARTS.labels.length) {{
   }});
 }}
 
-// ── Tabella WO critici ─────────────────────────────────────────────────────
-const tbody = document.getElementById('alertTable');
-CRITICI.forEach(r => {{
-  const oee = r.OEE ?? '-';
-  const pct = v => typeof v === 'number' ? (v*100).toFixed(1)+'%' : '-';
-  const classe = (r.OEE_Classe||'').toLowerCase();
-  const badge = (classe === 'ottimo' || classe.includes('world')) ? 'badge-wc' : classe === 'accettabile' ? 'badge-accettabile' : 'badge-critico';
-  const barW = typeof oee === 'number' ? Math.round(oee*60) : 0;
-  const barClass = oee >= 0.85 ? 'ok' : oee >= 0.65 ? 'mid' : '';
-  tbody.innerHTML += `<tr>
-    <td>${{r.WO||'-'}}</td>
-    <td>${{r.ARTICOLO||'-'}}</td>
-    <td>${{r.FASE||'-'}}</td>
-    <td><span class="oee-bar ${{barClass}}" style="width:${{barW}}px"></span>${{pct(oee)}}</td>
-    <td>${{pct(r.OEE_Disponibilita)}}</td>
-    <td>${{pct(r.OEE_Performance)}}</td>
-    <td>${{pct(r.OEE_Qualita)}}</td>
-    <td><span class="badge ${{badge}}">${{r.OEE_Classe||'-'}}</span></td>
-  </tr>`;
+// ── Tabella WO — stato sort/filter + render ────────────────────────────────
+var _woAllRows   = [];
+var _woSortCol   = 'Data_Ora_Fine';
+var _woSortDir   = 'desc';
+var _woFilters   = {{}};
+
+var NUMERIC_COLS = ['OEE','OEE_Disponibilita','OEE_Performance','OEE_Qualita'];
+
+// Ordine logico per la colonna Classe: Ottimo=2, Accettabile=1, Critico=0
+var CLASSE_ORDER = {{ 'Ottimo': 2, 'Accettabile': 1, 'Critico': 0 }};
+
+function matchNumeric(val, expr) {{
+  var s = expr.trim();
+  if (!s) return true;
+  var m = s.match(/^([><=!]=?)\s*([\d.]+)$/);
+  if (!m) {{
+    return String((val*100).toFixed(1)).includes(s.replace('%',''));
+  }}
+  var op = m[1], num = parseFloat(m[2]);
+  if      (op === '>')  return val >  num;
+  else if (op === '>=') return val >= num;
+  else if (op === '<')  return val <  num;
+  else if (op === '<=') return val <= num;
+  else                  return Math.abs(val - num) < 0.001;
+}}
+
+function applyFiltersAndSort() {{
+  var rows = _woAllRows.slice();
+
+  Object.keys(_woFilters).forEach(function(col) {{
+    var expr = (_woFilters[col] || '').toLowerCase().trim();
+    if (!expr) return;
+    rows = rows.filter(function(r) {{
+      var v = r[col];
+      if (v == null) return false;
+      if (NUMERIC_COLS.indexOf(col) >= 0 && typeof v === 'number') {{
+        return matchNumeric(v, expr);
+      }}
+      return String(v).toLowerCase().includes(expr);
+    }});
+  }});
+
+  var col = _woSortCol;
+  var dir = _woSortDir === 'asc' ? 1 : -1;
+  rows.sort(function(a, b) {{
+    var av = a[col], bv = b[col];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    // ── Ordinamento speciale per Classe: Ottimo > Accettabile > Critico ──
+    if (col === 'OEE_Classe') {{
+      var ao = CLASSE_ORDER[av] !== undefined ? CLASSE_ORDER[av] : -1;
+      var bo = CLASSE_ORDER[bv] !== undefined ? CLASSE_ORDER[bv] : -1;
+      return (ao - bo) * dir;
+    }}
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+    return String(av).localeCompare(String(bv)) * dir;
+  }});
+
+  document.querySelectorAll('#woHeaderRow th[data-col]').forEach(function(th) {{
+    th.classList.remove('sort-asc','sort-desc');
+    var icon = th.querySelector('.sort-icon');
+    if (th.dataset.col === col) {{
+      th.classList.add(_woSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      if (icon) icon.textContent = _woSortDir === 'asc' ? '↑' : '↓';
+    }} else {{
+      if (icon) icon.textContent = '↕';
+    }}
+  }});
+
+  var tbody = document.getElementById('alertTable');
+  tbody.innerHTML = '';
+  document.getElementById('woCountBadge').textContent = rows.length;
+
+  if (!rows.length) {{
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Nessun WO nel periodo / filtro selezionato</td></tr>';
+    return;
+  }}
+
+  var pct = function(v) {{ return typeof v === 'number' ? (v*100).toFixed(1)+'%' : '-'; }};
+  var frag = document.createDocumentFragment();
+  rows.forEach(function(r) {{
+    var oee    = r.OEE;
+    var classe = (r.OEE_Classe || '').toLowerCase();
+    var badge  = (classe === 'ottimo' || classe.includes('world')) ? 'badge-wc'
+               : classe === 'accettabile' ? 'badge-accettabile' : 'badge-critico';
+    var barW   = typeof oee === 'number' ? Math.round(oee * 60) : 0;
+    var barCls = oee >= 0.85 ? 'ok' : oee >= 0.65 ? 'mid' : '';
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + (r.WO        || '-') + '</td>' +
+      '<td>' + (r.ARTICOLO  || '-') + '</td>' +
+      '<td>' + (r.FASE      || '-') + '</td>' +
+      '<td>' + (r.Data_Ora_Fine || '-') + '</td>' +
+      '<td><span class="oee-bar ' + barCls + '" style="width:' + barW + 'px"></span>' + pct(oee) + '</td>' +
+      '<td>' + pct(r.OEE_Disponibilita) + '</td>' +
+      '<td>' + pct(r.OEE_Performance)   + '</td>' +
+      '<td>' + pct(r.OEE_Qualita)       + '</td>' +
+      '<td><span class="badge ' + badge + '">' + (r.OEE_Classe || '-') + '</span></td>';
+    frag.appendChild(tr);
+  }});
+  tbody.appendChild(frag);
+}}
+
+function renderWoTable(rows) {{
+  _woAllRows = rows || [];
+  applyFiltersAndSort();
+}}
+
+document.getElementById('woHeaderRow').addEventListener('click', function(e) {{
+  var th = e.target.closest('th[data-col]');
+  if (!th) return;
+  var col = th.dataset.col;
+  if (_woSortCol === col) {{
+    _woSortDir = _woSortDir === 'asc' ? 'desc' : 'asc';
+  }} else {{
+    _woSortCol = col;
+    // Per Classe, default desc = Ottimo prima
+    _woSortDir = (NUMERIC_COLS.indexOf(col) >= 0 || col === 'OEE_Classe') ? 'desc' : 'asc';
+  }}
+  applyFiltersAndSort();
+}});
+
+document.getElementById('woFilterRow').addEventListener('input', function(e) {{
+  var inp = e.target;
+  if (!inp.classList.contains('col-filter')) return;
+  _woFilters[inp.dataset.col] = inp.value;
+  applyFiltersAndSort();
 }});
 
 // ── Forecast OEE ─────────────────────────────────────────────────────────
@@ -825,11 +1006,13 @@ function fcOnFase() {{
 
 // ── Filtro periodo ─────────────────────────────────────────────────────────
 const ALL_OEE = {all_records_json};
+
 (function() {{
   var mx = null;
   ALL_OEE.forEach(function(r) {{ if (r.d) {{ var d = new Date(r.d); if (!mx || d > mx) mx = d; }} }});
   window._oeeMaxDate = mx;
 }})();
+
 function animateCount(id, target, suffix, decimals, dur) {{
   var el = document.getElementById(id);
   if (!el) return;
@@ -848,37 +1031,51 @@ function animateCount(id, target, suffix, decimals, dur) {{
   }}
   requestAnimationFrame(step);
 }}
+
+function syncButtons(p) {{
+  ['', 'wo_'].forEach(function(prefix) {{
+    ['all','1y','3m','1m'].forEach(function(id) {{
+      var el = document.getElementById(prefix + 'btn_' + id);
+      if (el) el.classList.toggle('active', id === p);
+    }});
+  }});
+}}
+
 function filterByPeriod(p) {{
-  document.querySelectorAll('.period-btn').forEach(function(b) {{ b.classList.remove('active'); }});
-  var btn = document.getElementById('btn_' + p);
-  if (btn) btn.classList.add('active');
+  syncButtons(p);
+
   var ref = window._oeeMaxDate || new Date();
   var cutDate;
-  var recs;
+  var kpiRecs, woRecs;
+
   if (p === 'all') {{
-    recs = ALL_OEE;
+    kpiRecs = ALL_OEE;
+    woRecs  = ALL_WO;
   }} else {{
     if      (p === '1m') cutDate = new Date(ref.getFullYear(), ref.getMonth() - 1,  ref.getDate());
     else if (p === '3m') cutDate = new Date(ref.getFullYear(), ref.getMonth() - 3,  ref.getDate());
     else                 cutDate = new Date(ref.getFullYear() - 1, ref.getMonth(),  ref.getDate());
-    recs = ALL_OEE.filter(function(r) {{ return r.d && new Date(r.d) >= cutDate; }});
+    kpiRecs = ALL_OEE.filter(function(r) {{ return r.d && new Date(r.d) >= cutDate; }});
+    woRecs  = ALL_WO.filter(function(r)  {{ return r.Data_Ora_Fine && new Date(r.Data_Ora_Fine) >= cutDate; }});
   }}
-  function avg(field) {{
-    var vals = recs.map(function(r) {{ return r[field]; }}).filter(function(v) {{ return v != null; }});
+
+  function avg(arr, field) {{
+    var vals = arr.map(function(r) {{ return r[field]; }}).filter(function(v) {{ return v != null; }});
     if (!vals.length) return null;
     return vals.reduce(function(a, b) {{ return a + b; }}, 0) / vals.length;
   }}
-  var oee  = avg('oee');
-  var disp = avg('disp');
-  var perf = avg('perf');
-  var qual = avg('qual');
+  var oee  = avg(kpiRecs, 'oee');
+  var disp = avg(kpiRecs, 'disp');
+  var perf = avg(kpiRecs, 'perf');
+  var qual = avg(kpiRecs, 'qual');
   if (oee  != null) animateCount('kpiOee',  oee  * 100, '%', 1); else document.getElementById('kpiOee').textContent  = '-';
   if (disp != null) animateCount('kpiDisp', disp * 100, '%', 1); else document.getElementById('kpiDisp').textContent = '-';
   if (perf != null) animateCount('kpiPerf', perf * 100, '%', 1); else document.getElementById('kpiPerf').textContent = '-';
   if (qual != null) animateCount('kpiQual', qual * 100, '%', 1); else document.getElementById('kpiQual').textContent = '-';
+
   if (window._distChart) {{
     var ottimo = 0, accettabile = 0, critico = 0;
-    recs.forEach(function(r) {{
+    kpiRecs.forEach(function(r) {{
       if (r.oee == null) return;
       if (r.oee >= 0.85) ottimo++;
       else if (r.oee >= 0.65) accettabile++;
@@ -892,7 +1089,10 @@ function filterByPeriod(p) {{
     window._distChart.data.datasets[0].data = [ottimo, accettabile, critico];
     window._distChart.update();
   }}
+
+  renderWoTable(woRecs);
 }}
+
 filterByPeriod('all');
 </script>
 </body>
@@ -911,7 +1111,7 @@ def genera_dashboard(path_input: str = INPUT_CSV, path_output: str = OUTPUT_HTML
     trend        = trend_mensile(df)
     dist         = distribuzione_classi(df)
     arts         = oee_per_articolo(df)
-    critici      = top_wo_critici(df)
+    all_wo       = tutti_wo_per_tabella(df)
     all_records  = tutti_record_per_kpi_oee(df)
     forecast_oee = forecast_oee_per_articolo_fase(df)
 
@@ -920,7 +1120,7 @@ def genera_dashboard(path_input: str = INPUT_CSV, path_output: str = OUTPUT_HTML
         trend_json        = json.dumps(trend),
         dist_json         = json.dumps(dist),
         art_json          = json.dumps(arts),
-        critici_json      = json.dumps(critici),
+        all_wo_json       = json.dumps(all_wo),
         kpi_json          = json.dumps(kpi),
         all_records_json  = json.dumps(all_records),
         forecast_oee_json = json.dumps(forecast_oee),

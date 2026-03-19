@@ -47,7 +47,7 @@ def carica_e_prepara(path, params):
 
 COLS_TO_DROP = [
     "classe_vera", "Indice_Inefficienza", "Tempo Lavoraz. ORE",
-    "Tempo_Teorico_TOT_ORE", "WO", "ARTICOLO", "Descrizione Articolo",
+    "Buon Tempo Ciclo ORE", "WO", "ARTICOLO", "Descrizione Articolo",
     "ID DAD", "Descrizione Macchina", "C.d.L. Effett", "Data_Ora_Fine",
 ]
 
@@ -90,8 +90,8 @@ def kpi_globali(df):
     n_normali  = int((df["classe_vera"] == 0).sum())
     tasso      = round(n_anomalie / max(n_tot, 1) * 100, 1)
     ore_perse  = 0.0
-    if "Tempo Lavoraz. ORE" in df.columns and "Tempo_Teorico_TOT_ORE" in df.columns:
-        ore_perse = round(float((df["Tempo Lavoraz. ORE"] - df["Tempo_Teorico_TOT_ORE"]).clip(lower=0).sum()), 1)
+    if "Tempo Lavoraz. ORE" in df.columns and "Buon Tempo Ciclo ORE" in df.columns:
+        ore_perse = round(float((df["Tempo Lavoraz. ORE"] - df["Buon Tempo Ciclo ORE"]).clip(lower=0).sum()), 1)
     delta_anomalie = "—"
     if "Data_Ora_Fine" in df.columns:
         periodi = sorted(df["Data_Ora_Fine"].dt.to_period("M").dropna().unique())
@@ -137,7 +137,7 @@ def wo_per_giorno(df):
             else:
                 stato = "NORMALE"
             orer = row.get("Tempo Lavoraz. ORE", None)
-            oret = row.get("Tempo_Teorico_TOT_ORE", None)
+            oret = row.get("Buon Tempo Ciclo ORE", None)
             records.append({"WO":str(row.get("WO","—") or "—"),
                             "articolo":str(row.get("ARTICOLO",row.get("ARTICOLO_grouped","—")) or "—"),
                             "fase":str(row.get("FASE","—") or "—"),"stato":stato,
@@ -148,7 +148,7 @@ def wo_per_giorno(df):
 
 def tabella_wo_tutti(df, n=99999, soglia_attenzione=1.1511, soglia_anomalia=1.4220):
     cols = [c for c in ["WO","ARTICOLO","ARTICOLO_grouped","FASE","C.d.L. Prev","Data_Ora_Fine",
-                         "Tempo Lavoraz. ORE","Tempo_Teorico_TOT_ORE","Indice_Inefficienza",
+                         "Tempo Lavoraz. ORE","Buon Tempo Ciclo ORE","Indice_Inefficienza",
                          "prob_anomalia","classe_vera"] if c in df.columns]
     sub = df[cols].copy()
     if "Data_Ora_Fine" in sub.columns:
@@ -169,7 +169,7 @@ def tabella_wo_tutti(df, n=99999, soglia_attenzione=1.1511, soglia_anomalia=1.42
     if "Data_Ora_Fine" in sub.columns:
         sub["_d"] = sub["Data_Ora_Fine"].dt.strftime("%Y-%m-%d")
         sub["Data_Ora_Fine"] = sub["Data_Ora_Fine"].dt.strftime("%d/%m/%Y")
-    for c, r in [("Indice_Inefficienza",3),("Tempo Lavoraz. ORE",2),("Tempo_Teorico_TOT_ORE",2)]:
+    for c, r in [("Indice_Inefficienza",3),("Tempo Lavoraz. ORE",2),("Buon Tempo Ciclo ORE",2)]:
         if c in sub.columns: sub[c] = sub[c].round(r)
     if "prob_anomalia" in sub.columns: sub["prob_anomalia"] = (sub["prob_anomalia"]*100).round(2)
     return [{k:_safe(v) for k,v in row.items()} for row in sub.to_dict(orient="records")]
@@ -209,8 +209,8 @@ def _fmt_mese(s):
 def sparkline_ore_perse(df):
     if "Data_Ora_Fine" not in df.columns: return {"labels":[],"values":[],"keys":[]}
     df = df.copy()
-    if "Tempo Lavoraz. ORE" in df.columns and "Tempo_Teorico_TOT_ORE" in df.columns:
-        df["_op"] = (df["Tempo Lavoraz. ORE"]-df["Tempo_Teorico_TOT_ORE"]).clip(lower=0)
+    if "Tempo Lavoraz. ORE" in df.columns and "Buon Tempo Ciclo ORE" in df.columns:
+        df["_op"] = (df["Tempo Lavoraz. ORE"]-df["Buon Tempo Ciclo ORE"]).clip(lower=0)
     else:
         df["_op"] = pd.Series(0.0, index=df.index)
     df["_m"] = df["Data_Ora_Fine"].dt.to_period("M")
@@ -448,7 +448,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <th data-col="FASE">Fase <span class="sort-icon">↕</span></th>
           <th data-col="C.d.L. Prev">C.d.L. <span class="sort-icon">↕</span></th>
           <th data-col="Data_Ora_Fine">Data fine <span class="sort-icon">↓</span></th>
-          <th data-col="Tempo_Teorico_TOT_ORE">Ore teoriche <span class="sort-icon">↕</span></th>
+          <th data-col="Buon Tempo Ciclo ORE">Ore teoriche <span class="sort-icon">↕</span></th>
           <th data-col="Tempo Lavoraz. ORE">Ore reali <span class="sort-icon">↕</span></th>
           <th data-col="Indice_Inefficienza">Indice <span class="sort-icon">↕</span></th>
           <th data-col="stato">Stato <span class="sort-icon">↕</span></th>
@@ -459,7 +459,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <th><input class="col-filter" data-col="FASE"                  placeholder="Filtra…"></th>
           <th><input class="col-filter" data-col="C.d.L. Prev"           placeholder="Filtra…"></th>
           <th><input class="col-filter" data-col="Data_Ora_Fine"         placeholder="gg/mm/aaaa"></th>
-          <th><input class="col-filter" data-col="Tempo_Teorico_TOT_ORE" placeholder="es. >2"></th>
+          <th><input class="col-filter" data-col="Buon Tempo Ciclo ORE" placeholder="es. >2"></th>
           <th><input class="col-filter" data-col="Tempo Lavoraz. ORE"    placeholder="es. >2"></th>
           <th><input class="col-filter" data-col="Indice_Inefficienza"   placeholder="es. >1.5"></th>
           <th><input class="col-filter" data-col="stato"                 placeholder="NORMALE…"></th>
@@ -570,7 +570,7 @@ var _woCurRows  = [];   // subset del periodo corrente
 var _woSortCol  = 'Data_Ora_Fine';
 var _woSortDir  = 'desc';
 var _woFilters  = {};
-var WO_NUMERIC  = ['Tempo_Teorico_TOT_ORE','Tempo Lavoraz. ORE','Indice_Inefficienza'];
+var WO_NUMERIC  = ['Buon Tempo Ciclo ORE','Tempo Lavoraz. ORE','Indice_Inefficienza'];
 
 function matchNumWo(val, expr) {
   var s = expr.trim();
@@ -644,7 +644,7 @@ function applyWoFiltersAndSort() {
       '<td>'+(r.FASE||'&mdash;')+'</td>'+
       '<td>'+(r['C.d.L. Prev']||'&mdash;')+'</td>'+
       '<td>'+(r.Data_Ora_Fine||'&mdash;')+'</td>'+
-      '<td>'+(r.Tempo_Teorico_TOT_ORE!=null?r.Tempo_Teorico_TOT_ORE:'&mdash;')+' h</td>'+
+      '<td>'+(r.Buon Tempo Ciclo ORE!=null?r.Buon Tempo Ciclo ORE:'&mdash;')+' h</td>'+
       '<td>'+(r['Tempo Lavoraz. ORE']!=null?r['Tempo Lavoraz. ORE']:'&mdash;')+' h</td>'+
       '<td style="color:'+ic+'">'+ind+'</td>'+
       '<td><span class="badge '+bc+'">'+r.stato+'</span></td>';
@@ -883,7 +883,7 @@ def tutti_record_per_kpi(df):
     cols = ["classe_vera"]
     if "Data_Ora_Fine" in df.columns: cols = ["Data_Ora_Fine"] + cols
     if "Tempo Lavoraz. ORE" in df.columns: cols.append("Tempo Lavoraz. ORE")
-    if "Tempo_Teorico_TOT_ORE" in df.columns: cols.append("Tempo_Teorico_TOT_ORE")
+    if "Buon Tempo Ciclo ORE" in df.columns: cols.append("Buon Tempo Ciclo ORE")
     sub = df[[c for c in cols if c in df.columns]].copy()
     records = []
     for _, row in sub.iterrows():
@@ -891,7 +891,7 @@ def tutti_record_per_kpi(df):
         if "Data_Ora_Fine" in row.index and pd.notna(row["Data_Ora_Fine"]):
             d = row["Data_Ora_Fine"].strftime("%Y-%m-%d")
         r = row.get("Tempo Lavoraz. ORE")
-        t = row.get("Tempo_Teorico_TOT_ORE")
+        t = row.get("Buon Tempo Ciclo ORE")
         records.append({
             "d": d,
             "p": int(row.get("classe_vera", 0) or 0),
